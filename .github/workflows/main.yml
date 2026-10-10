@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    branches: [ main ]
 
 jobs:
   build-and-lint:
@@ -26,23 +26,20 @@ jobs:
       - name: Format code
         run: |
           pip install black
-          black .
-
-      - name: Install matplotlib
-        run: pip install matplotlib
+          black --check .
 
   docker-build-and-test:
     runs-on: ubuntu-latest
     needs: build-and-lint
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+       - name: Checkout code
+         uses: actions/checkout@v4
 
-      - name: Build Docker image
-        run: docker build -t aceest-app:latest .
+       - name: Build Docker image
+         run: docker build -t aceest-app:latest .
 
-      - name: Install xvfb on runner
-        run: sudo apt-get update && sudo apt-get install -y xvfb
+       - name: Install xvfb on runner
+         run: sudo apt-get update && sudo apt-get install -y xvfb
 
-      - name: Run tests inside container with xvfb
-        run: xvfb-run -a docker run --rm aceest-app:latest pytest tests/
+       - name: Run tests inside container with xvfb
+         run: xvfb-run -a docker run --rm aceest-app:latest .venv/bin/pytest aceestver_test_1.py

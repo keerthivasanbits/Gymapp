@@ -4,9 +4,9 @@ import pytest
 from unittest.mock import patch, MagicMock
 import tkinter as tk
 
-# Import your module
-import app as main_module
-from app import ACEestApp
+# Application module import
+import aceestver_gymapp as main_module
+from aceestver_gymapp import ACEestApp
 
 
 @pytest.fixture
@@ -57,7 +57,7 @@ def test_database_tables_created(app_instance, test_db):
 # 2. CLIENT MANAGEMENT TESTS
 # ==========================================
 
-@patch("app.messagebox.showerror")
+@patch("aceestver_gymapp.messagebox.showerror")
 def test_save_client_validation_missing_fields(mock_showerror, app_instance):
     """Should show error when saving without required fields (name / program)."""
     app_instance.name.set("")
@@ -71,7 +71,7 @@ def test_save_client_validation_missing_fields(mock_showerror, app_instance):
     mock_showerror.assert_called_with("Error", "Program is required")
 
 
-@patch("app.messagebox.showinfo")
+@patch("aceestver_gymapp.messagebox.showinfo")
 def test_save_and_load_client_success(mock_showinfo, app_instance):
     """Test full cycle of creating a client, persisting to DB, and loading back."""
     app_instance.name.set("John Doe")
@@ -111,7 +111,7 @@ def test_save_and_load_client_success(mock_showinfo, app_instance):
 # 3. PROGRESS LOGGING TESTS
 # ==========================================
 
-@patch("app.messagebox.showinfo")
+@patch("aceestver_gymapp.messagebox.showinfo")
 def test_save_progress_success(mock_showinfo, app_instance):
     """Logging weekly adherence progress."""
     app_instance.name.set("Alice Smith")
@@ -145,7 +145,7 @@ def test_save_progress_success(mock_showinfo, app_instance):
         (180, 110, "Obese"),        # BMI ≈ 34.0
     ],
 )
-@patch("app.messagebox.showinfo")
+@patch("aceestver_gymapp.messagebox.showinfo")
 def test_show_bmi_info(mock_showinfo, app_instance, height, weight, expected_category):
     """Tests categorical classification of BMI formulas."""
     app_instance.current_client = "Tester"
@@ -162,12 +162,11 @@ def test_show_bmi_info(mock_showinfo, app_instance, height, weight, expected_cat
 # 5. WORKOUT & METRIC DIALOGUE TESTS
 # ==========================================
 
-@patch("app.messagebox.showinfo")
+@patch("aceestver_gymapp.messagebox.showinfo")
 def test_workout_logging_database_entry(mock_showinfo, app_instance):
     """Simulates workout logging and verifies relational DB record insertion."""
     app_instance.current_client = "Bob Ross"
 
-    # Direct database insertion matching open_log_workout_window logic
     app_instance.cur.execute(
         """
         INSERT INTO workouts (client_name, date, workout_type, duration_min, notes)
@@ -186,8 +185,9 @@ def test_workout_logging_database_entry(mock_showinfo, app_instance):
     )
     app_instance.conn.commit()
 
-    # Query back
-    app_instance.cur.execute("SELECT name, sets, weight FROM exercises WHERE workout_id=?", (workout_id,))
+    app_instance.cur.execute(
+        "SELECT name, sets, weight FROM exercises WHERE workout_id=?", (workout_id,)
+    )
     ex_row = app_instance.cur.fetchone()
     assert ex_row == ("Bench Press", 4, 80.0)
 
@@ -198,7 +198,7 @@ def test_workout_logging_database_entry(mock_showinfo, app_instance):
 
 @patch("matplotlib.pyplot.show")
 def test_show_progress_chart_calls_plt(mock_plt_show, app_instance):
-    """Ensures Matplotlib plot generation pipeline triggers properly without GUI blockage."""
+    """Ensures Matplotlib plot generation triggers without GUI blockage."""
     app_instance.current_client = "ChartUser"
     app_instance.cur.execute(
         "INSERT INTO progress (client_name, week, adherence) VALUES (?, ?, ?)",

@@ -24,14 +24,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # - name: Lint code
-      #   run: |
-      #     pip install flake8
-      #     flake8 . --ignore=E501,W292,W293
       - name: Format code
         run: |
           pip install black
-          black .
+          black --check .
 
   docker-build:
     runs-on: ubuntu-latest
@@ -54,4 +50,4 @@ jobs:
         run: docker build -t aceest-app:latest .
 
       - name: Run tests inside container
-        run: docker run --rm aceest-app:latest .venv/bin/pytest aceestver_test_1.py
+        run: docker run --rm aceest-app:latest xvfb-run -a .venv/bin/pytest aceestver_test_1.py

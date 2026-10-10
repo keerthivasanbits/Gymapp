@@ -1,154 +1,117 @@
-import importlib.util
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+import sys, os
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+
 import pytest
+from unittest.mock import patch
 import tkinter as tk
-
-# Load the file directly by path to handle both '-' and '.' in the filename
-current_dir = Path(__file__).resolve().parent
-file_path = current_dir / "aceestver-1.0.py"
-
-spec = importlib.util.spec_from_file_location("aceest_module", file_path)
-aceest_module = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(aceest_module)
-
-ACEestApp = aceest_module.ACEestApp
+from aceestver_gymapp import ACEestApp
 
 
 @pytest.fixture
-def app_instance():
-    """Fixture that initializes Tk root (or a mock if headless) and the ACEestApp."""
-    is_mocked = False
+def app():
+    """Initializes the Tk instance and ACEestApp without displaying a GUI window."""
+    root = tk.Tk()
+    root.withdraw()  # Prevent window rendering during test runs
+    application = ACEestApp(root)
+    yield application
     try:
-        root = tk.Tk()
-        root.withdraw()
-    except tk.TclError:
-        root = MagicMock()
-        is_mocked = True
-
-    if is_mocked:
-        # Patch StringVar and ttk/tk widgets while instantiating ACEestApp
-        with patch("tkinter.StringVar") as mock_string_var, \
-             patch("tkinter.ttk.Combobox"), \
-             patch("tkinter.ttk.Label"), \
-             patch("tkinter.ttk.Frame"), \
-             patch("tkinter.Label"), \
-             patch("tkinter.Frame"):
-            
-            # Create a mock StringVar that maintains state
-            var_state = {"val": ""}
-            mock_var = MagicMock()
-            mock_var.get.side_effect = lambda: var_state["val"]
-            mock_var.set.side_effect = lambda v: var_state.update({"val": v})
-            mock_string_var.return_value = mock_var
-
-            app = ACEestApp(root)
-            app.prog_var = mock_var
-
-            # Emulate widget attributes and cget/config behaviors
-            data_store = {
-                "title": "ACEest Fitness and Gym",
-                "work_text": "Select a profile to view workout",
-                "diet_text": "Select a profile to view diet",
-                "work_fg": "white",
-            }
-            app.root.title.return_value = data_store["title"]
-
-            app._work_text = data_store["work_text"]
-            app._work_fg = data_store["work_fg"]
-            app._diet_text = data_store["diet_text"]
-
-            def work_cget(prop):
-                if prop == "text":
-                    return getattr(app, "_work_text", "")
-                if prop == "fg":
-                    return getattr(app, "_work_fg", "white")
-                return ""
-
-            def diet_cget(prop):
-                if prop == "text":
-                    return getattr(app, "_diet_text", "")
-                return ""
-
-            def work_config(**kwargs):
-                if "text" in kwargs:
-                    app._work_text = kwargs["text"]
-                if "fg" in kwargs:
-                    app._work_fg = kwargs["fg"]
-
-            def diet_config(**kwargs):
-                if "text" in kwargs:
-                    app._diet_text = kwargs["text"]
-
-            app.work_label = MagicMock()
-            app.work_label.cget.side_effect = work_cget
-            app.work_label.config.side_effect = work_config
-
-            app.diet_label = MagicMock()
-            app.diet_label.cget.side_effect = diet_cget
-            app.diet_label.config.side_effect = diet_config
-
-            app.prog_menu = MagicMock()
-            app.prog_menu.__getitem__.side_effect = lambda k: list(app.programs.keys()) if k == "values" else None
-
-            yield app
-    else:
-        app = ACEestApp(root)
-        yield app
         root.destroy()
+    except tk.TclError:
+        pass
 
 
-def test_initial_state(app_instance):
-    """Test that the application initializes with expected defaults and data store."""
-    app = app_instance
-
-    # Check root configuration
-    assert app.root.title() == "ACEest Fitness and Gym"
-
-    # Verify program data keys exist
-    expected_programs = {"Fat Loss (FL)", "Muscle Gain (MG)", "Beginner (BG)"}
-    assert set(app.programs.keys()) == expected_programs
-
-    # Verify initial label contents
-    assert app.work_label.cget("text") == "Select a profile to view workout"
-    assert app.diet_label.cget("text") == "Select a profile to view diet"
-
-    # Verify combobox options
-    assert list(app.prog_menu["values"]) == list(app.programs.keys())
+def test_initial_state(app):
+    """Verifies that all input fields and display labels start with default values."""
+    assert app.name_var.get() == ""
+    assert app.age_var.get() == 0
+    assert app.weight_var.get() == 0.0
+    assert app.program_var.get() == ""
+    assert app.progress_var.get() == 0
+    assert app.calorie_label.cget("text") == "Estimated Calories: --"
 
 
 @pytest.mark.parametrize(
-    "program_name",
-    ["Fat Loss (FL)", "Muscle Gain (MG)", "Beginner (BG)"],
+    "program_name, weight, expected_factor, expected_color",
+    [
+        ("Fat Loss (FL)", 80.0, 22, "#e74c3c"),
+        ("Muscle Gain (MG)", 70.0, 35, "#2ecc71"),
+        ("Beginner (BG)", 60.0, 26, "#3498db"),
+    ],
 )
-def test_update_display_logic(app_instance, program_name):
-    """Verify labels update accurately when a program is selected."""
-    app = app_instance
-    expected_data = app.programs[program_name]
+def test_update_program_with_weight(app, program_name, weight, expected_factor, expected_color):
+    """Tests updating the workout text, diet text, and calorie calculation when weight > 0."""
+    app.weight_var.set(weight)
+    app.program_var.set(program_name)
+    app.update_program()
 
-    # Simulate combobox selection
-    app.prog_var.set(program_name)
-    app.update_display(event=None)
+    expected_calories = int(weight * expected_factor)
+    assert app.calorie_label.cget("text") == f"Estimated Calories: {expected_calories} kcal"
 
-    assert app.work_label.cget("text") == expected_data["workout"]
-    assert app.work_label.cget("fg") == expected_data["color"]
-    assert app.diet_label.cget("text") == expected_data["diet"]
+    workout_content = app.workout_text.get("1.0", "end-1c")
+    diet_content = app.diet_text.get("1.0", "end-1c")
+    assert workout_content == app.programs[program_name]["workout"]
+    assert diet_content == app.programs[program_name]["diet"]
+    assert app.workout_text.cget("fg") == expected_color
 
 
-def test_event_binding_trigger(app_instance):
-    """Test that firing the ComboboxSelected virtual event updates UI labels."""
-    app = app_instance
-    target_program = "Muscle Gain (MG)"
+def test_update_program_without_weight(app):
+    """Calorie calculation should remain unset when weight is zero."""
+    app.weight_var.set(0)
+    app.program_var.set("Fat Loss (FL)")
+    app.update_program()
 
-    # Set selection in dropdown
-    app.prog_menu.set(target_program)
-    app.prog_var.set(target_program)
+    assert app.calorie_label.cget("text") == "Estimated Calories: --"
+    assert app.workout_text.get("1.0", "end-1c") == app.programs["Fat Loss (FL)"]["workout"]
 
-    # Generate Tk event
-    app.prog_menu.event_generate("<<ComboboxSelected>>")
-    if hasattr(app.root, "update_idletasks"):
-        app.root.update_idletasks()
-    app.update_display(event=None)
 
-    assert app.work_label.cget("text") == app.programs[target_program]["workout"]
-    assert app.diet_label.cget("text") == app.programs[target_program]["diet"]
+@patch("aceestver_gymapp.messagebox.showwarning")
+def test_save_client_validation_missing_name(mock_warning, app):
+    """Triggers warning when the client name is missing."""
+    app.name_var.set("")
+    app.program_var.set("Muscle Gain (MG)")
+    app.save_client()
+
+    mock_warning.assert_called_once_with("Incomplete", "Please fill client name and program.")
+
+
+@patch("aceestver_gymapp.messagebox.showwarning")
+def test_save_client_validation_missing_program(mock_warning, app):
+    """Triggers warning when the program is missing."""
+    app.name_var.set("Arun")
+    app.program_var.set("")
+    app.save_client()
+
+    mock_warning.assert_called_once_with("Incomplete", "Please fill client name and program.")
+
+
+@patch("aceestver_gymapp.messagebox.showinfo")
+def test_save_client_success(mock_info, app):
+    """Triggers success notification with formatted name and adherence percentage."""
+    app.name_var.set("Kavitha")
+    app.program_var.set("Beginner (BG)")
+    app.progress_var.set(85)
+    app.save_client()
+
+    expected_message = "Client Kavitha saved successfully.\nAdherence: 85%"
+    mock_info.assert_called_once_with("Saved", expected_message)
+
+
+def test_reset_behavior(app):
+    """Verifies that reset clears all variables and UI panels back to initial states."""
+    app.name_var.set("Vikram")
+    app.age_var.set(28)
+    app.weight_var.set(75.0)
+    app.program_var.set("Fat Loss (FL)")
+    app.progress_var.set(90)
+    app.update_program()
+
+    app.reset()
+
+    assert app.name_var.get() == ""
+    assert app.age_var.get() == 0
+    assert app.weight_var.get() == 0.0
+    assert app.program_var.get() == ""
+    assert app.progress_var.get() == 0
+    assert app.calorie_label.cget("text") == "Estimated Calories: --"
+    assert app.workout_text.get("1.0", "end-1c") == ""
+    assert app.diet_text.get("1.0", "end-1c") == ""

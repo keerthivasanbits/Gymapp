@@ -1,13 +1,11 @@
-import sqlite3
 import tkinter as tk
+from tkinter import ttk, messagebox
+import sqlite3
 from datetime import datetime
-from tkinter import messagebox, ttk
 
 DB_NAME = "aceest_fitness.db"
 
-
 class ACEestApp:
-
     def __init__(self, root):
         self.root = root
         self.root.title("ACEest Fitness & Performance")
@@ -23,8 +21,7 @@ class ACEestApp:
         self.conn = sqlite3.connect(DB_NAME)
         self.cur = self.conn.cursor()
 
-        self.cur.execute(
-            """
+        self.cur.execute("""
             CREATE TABLE IF NOT EXISTS clients (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT UNIQUE,
@@ -33,19 +30,16 @@ class ACEestApp:
                 program TEXT,
                 calories INTEGER
             )
-        """
-        )
+        """)
 
-        self.cur.execute(
-            """
+        self.cur.execute("""
             CREATE TABLE IF NOT EXISTS progress (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 client_name TEXT,
                 week TEXT,
                 adherence INTEGER
             )
-        """
-        )
+        """)
         self.conn.commit()
 
     # ---------- DATA ----------
@@ -53,7 +47,7 @@ class ACEestApp:
         self.programs = {
             "Fat Loss (FL)": {"factor": 22},
             "Muscle Gain (MG)": {"factor": 35},
-            "Beginner (BG)": {"factor": 26},
+            "Beginner (BG)": {"factor": 26}
         }
 
     # ---------- UI ----------
@@ -64,7 +58,7 @@ class ACEestApp:
             bg="#d4af37",
             fg="black",
             font=("Helvetica", 24, "bold"),
-            height=2,
+            height=2
         )
         header.pack(fill="x")
 
@@ -72,13 +66,8 @@ class ACEestApp:
         main.pack(fill="both", expand=True, padx=20, pady=20)
 
         # LEFT PANEL
-        left = tk.LabelFrame(
-            main,
-            text=" Client Management ",
-            bg="#1a1a1a",
-            fg="#d4af37",
-            font=("Arial", 12, "bold"),
-        )
+        left = tk.LabelFrame(main, text=" Client Management ",
+                             bg="#1a1a1a", fg="#d4af37", font=("Arial", 12, "bold"))
         left.pack(side="left", fill="y", padx=10)
 
         self.name = tk.StringVar()
@@ -92,47 +81,24 @@ class ACEestApp:
         self._field(left, "Weight (kg)", self.weight)
 
         tk.Label(left, text="Program", bg="#1a1a1a", fg="white").pack(pady=5)
-        ttk.Combobox(
-            left,
-            textvariable=self.program,
-            values=list(self.programs.keys()),
-            state="readonly",
-        ).pack()
+        ttk.Combobox(left, textvariable=self.program,
+                     values=list(self.programs.keys()),
+                     state="readonly").pack()
 
-        tk.Label(
-            left, text="Weekly Adherence %", bg="#1a1a1a", fg="white"
-        ).pack(pady=10)
-        ttk.Scale(
-            left,
-            from_=0,
-            to=100,
-            orient="horizontal",
-            variable=self.adherence,
-        ).pack()
+        tk.Label(left, text="Weekly Adherence %", bg="#1a1a1a", fg="white").pack(pady=10)
+        ttk.Scale(left, from_=0, to=100,
+                  orient="horizontal", variable=self.adherence).pack()
 
-        ttk.Button(left, text="Save Client", command=self.save_client).pack(
-            pady=10
-        )
-        ttk.Button(left, text="Load Client", command=self.load_client).pack(
-            pady=5
-        )
-        ttk.Button(left, text="Save Progress", command=self.save_progress).pack(
-            pady=5
-        )
+        ttk.Button(left, text="Save Client", command=self.save_client).pack(pady=10)
+        ttk.Button(left, text="Load Client", command=self.load_client).pack(pady=5)
+        ttk.Button(left, text="Save Progress", command=self.save_progress).pack(pady=5)
 
         # RIGHT PANEL
-        right = tk.LabelFrame(
-            main,
-            text=" Client Summary ",
-            bg="#1a1a1a",
-            fg="#d4af37",
-            font=("Arial", 12),
-        )
+        right = tk.LabelFrame(main, text=" Client Summary ",
+                              bg="#1a1a1a", fg="#d4af37", font=("Arial", 12))
         right.pack(side="right", fill="both", expand=True)
 
-        self.summary = tk.Text(
-            right, bg="#111", fg="white", font=("Consolas", 11)
-        )
+        self.summary = tk.Text(right, bg="#111", fg="white", font=("Consolas", 11))
         self.summary.pack(fill="both", expand=True, padx=10, pady=10)
 
     # ---------- HELPERS ----------
@@ -146,34 +112,22 @@ class ACEestApp:
             messagebox.showerror("Error", "Name and Program required")
             return
 
-        calories = int(
-            self.weight.get() * self.programs[self.program.get()]["factor"]
-        )
+        calories = int(self.weight.get() * self.programs[self.program.get()]["factor"])
 
         try:
-            self.cur.execute(
-                """
+            self.cur.execute("""
                 INSERT OR REPLACE INTO clients
                 (name, age, weight, program, calories)
                 VALUES (?, ?, ?, ?, ?)
-            """,
-                (
-                    self.name.get(),
-                    self.age.get(),
-                    self.weight.get(),
-                    self.program.get(),
-                    calories,
-                ),
-            )
+            """, (self.name.get(), self.age.get(),
+                  self.weight.get(), self.program.get(), calories))
             self.conn.commit()
             messagebox.showinfo("Saved", "Client data saved")
         except Exception as e:
             messagebox.showerror("DB Error", str(e))
 
     def load_client(self):
-        self.cur.execute(
-            "SELECT * FROM clients WHERE name=?", (self.name.get(),)
-        )
+        self.cur.execute("SELECT * FROM clients WHERE name=?", (self.name.get(),))
         row = self.cur.fetchone()
 
         if not row:
@@ -186,9 +140,7 @@ class ACEestApp:
         self.program.set(program)
 
         self.summary.delete("1.0", "end")
-        self.summary.insert(
-            "end",
-            f"""
+        self.summary.insert("end", f"""
 CLIENT PROFILE
 --------------
 Name     : {name}
@@ -196,18 +148,14 @@ Age      : {age}
 Weight   : {weight} kg
 Program  : {program}
 Calories : {calories} kcal/day
-""",
-        )
+""")
 
     def save_progress(self):
         week = datetime.now().strftime("Week %U - %Y")
-        self.cur.execute(
-            """
+        self.cur.execute("""
             INSERT INTO progress (client_name, week, adherence)
             VALUES (?, ?, ?)
-        """,
-            (self.name.get(), week, self.adherence.get()),
-        )
+        """, (self.name.get(), week, self.adherence.get()))
         self.conn.commit()
         messagebox.showinfo("Progress Saved", "Weekly progress logged")
 

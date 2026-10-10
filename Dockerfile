@@ -1,9 +1,14 @@
 FROM python:3.10-slim
 
-# Install Tkinter GUI and Xvfb dependencies
+# Prevent Python from buffering stdout/stderr
+ENV PYTHONUNBUFFERED=1 \
+    DEBIAN_FRONTEND=noninteractive
+
+# Install Tkinter GUI, build essentials, and Xvfb dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-tk \
     tk \
+    tk-dev \
     libx11-6 \
     libxext6 \
     libxrender1 \
@@ -13,19 +18,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     xauth \
     && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user
-RUN useradd -m appuser
+# Create and switch to non-root user
+RUN useradd -m -s /bin/bash appuser
 USER appuser
 
 WORKDIR /home/appuser/app
 
-# Install dependencies in virtualenv first (for better layer caching)
+# Set up virtual environment and update PATH
+ENV PATH="/home/appuser/app/.venv/bin:$PATH"
+
+# Copy requirements and install dependencies
 COPY --chown=appuser:appuser requirements.txt .
 RUN python -m venv .venv && \
-    .venv/bin/pip install --no-cache-dir -r requirements.txt && \
-    .venv/bin/pip install pytest
+    pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
 # Copy application source code
 COPY --chown=appuser:appuser . .
 
-CMD [".venv/bin/python", "aceestver_gymapp.py"]
+# Default command to run the application
+CMD ["python", "aceestver_gymapp.py"]

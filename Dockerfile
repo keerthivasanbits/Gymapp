@@ -9,6 +9,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxrender1 \
     libxft2 \
     libxss1 \
+    xvfb \
+    xauth \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user for security

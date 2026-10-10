@@ -19,20 +19,20 @@ class ACEestApp:
                 "workout": "Back Squat, Cardio, Bench, Deadlift, Recovery",
                 "diet": "Egg Whites, Chicken, Fish Curry",
                 "color": "#e74c3c",
-                "calorie_factor": 22
+                "calorie_factor": 22,
             },
             "Muscle Gain (MG)": {
                 "workout": "Squat, Bench, Deadlift, Press, Rows",
                 "diet": "Eggs, Biryani, Mutton Curry",
                 "color": "#2ecc71",
-                "calorie_factor": 35
+                "calorie_factor": 35,
             },
             "Beginner (BG)": {
                 "workout": "Air Squats, Ring Rows, Push-ups",
                 "diet": "Balanced Tamil Meals",
                 "color": "#3498db",
-                "calorie_factor": 26
-            }
+                "calorie_factor": 26,
+            },
         }
 
         self.setup_ui()
@@ -45,7 +45,7 @@ class ACEestApp:
             text="ACEest FUNCTIONAL FITNESS SYSTEM v2",
             font=("Helvetica", 24, "bold"),
             bg="#d4af37",
-            fg="black"
+            fg="black",
         ).pack(pady=20)
 
         main = tk.Frame(self.root, bg="#1a1a1a")
@@ -57,7 +57,7 @@ class ACEestApp:
             text=" Client Profile ",
             bg="#1a1a1a",
             fg="#d4af37",
-            font=("Arial", 12, "bold")
+            font=("Arial", 12, "bold"),
         )
         left.pack(side="left", fill="y", padx=10)
 
@@ -77,13 +77,17 @@ class ACEestApp:
             left,
             textvariable=self.program_var,
             values=list(self.programs.keys()),
-            state="readonly"
+            state="readonly",
         )
         self.program_box.pack(padx=20)
         self.program_box.bind("<<ComboboxSelected>>", self.update_program)
 
-        tk.Label(left, text="Weekly Adherence (%)", bg="#1a1a1a", fg="white").pack(pady=10)
-        ttk.Scale(left, from_=0, to=100, variable=self.progress_var, orient="horizontal").pack(padx=20)
+        tk.Label(left, text="Weekly Adherence (%)", bg="#1a1a1a", fg="white").pack(
+            pady=10
+        )
+        ttk.Scale(
+            left, from_=0, to=100, variable=self.progress_var, orient="horizontal"
+        ).pack(padx=20)
 
         tk.Label(left, text="Coach Notes", bg="#1a1a1a", fg="white").pack(pady=5)
         tk.Entry(left, textvariable=self.notes_var, bg="#333", fg="white").pack(padx=20)
@@ -104,26 +108,30 @@ class ACEestApp:
             text="Estimated Calories: --",
             bg="#1a1a1a",
             fg="#d4af37",
-            font=("Arial", 12, "bold")
+            font=("Arial", 12, "bold"),
         )
         self.calorie_label.pack(pady=10)
 
         # CLIENT LIST TABLE
-        table_frame = tk.LabelFrame(right, text=" Client List ", bg="#1a1a1a", fg="#d4af37")
+        table_frame = tk.LabelFrame(
+            right, text=" Client List ", bg="#1a1a1a", fg="#d4af37"
+        )
         table_frame.pack(fill="both", expand=True, pady=10)
 
         self.client_table = ttk.Treeview(
             table_frame,
             columns=("Name", "Age", "Weight", "Program", "Adherence", "Notes"),
             show="headings",
-            height=6
+            height=6,
         )
         for col in self.client_table["columns"]:
             self.client_table.heading(col, text=col)
         self.client_table.pack(fill="both", expand=True)
 
         # PROGRESS CHART
-        chart_frame = tk.LabelFrame(right, text=" Progress Chart ", bg="#1a1a1a", fg="#d4af37")
+        chart_frame = tk.LabelFrame(
+            right, text=" Progress Chart ", bg="#1a1a1a", fg="#d4af37"
+        )
         chart_frame.pack(fill="both", expand=True, pady=10)
 
         self.fig, self.ax = plt.subplots(figsize=(4, 2))
@@ -135,7 +143,9 @@ class ACEestApp:
         tk.Entry(parent, textvariable=variable, bg="#333", fg="white").pack(padx=20)
 
     def _scrollable_block(self, parent, title):
-        frame = tk.LabelFrame(parent, text=title, bg="#1a1a1a", fg="#d4af37", font=("Arial", 12))
+        frame = tk.LabelFrame(
+            parent, text=title, bg="#1a1a1a", fg="#d4af37", font=("Arial", 12)
+        )
         frame.pack(fill="both", expand=True, pady=5)
         text = tk.Text(frame, bg="#111", fg="white", wrap="word", height=8)
         text.pack(fill="both", expand=True, padx=10, pady=10)
@@ -169,22 +179,28 @@ class ACEestApp:
             self.weight_var.get(),
             self.program_var.get(),
             self.progress_var.get(),
-            self.notes_var.get()
+            self.notes_var.get(),
         )
         self.clients.append(client)
         self.client_table.insert("", "end", values=client)
         self.update_chart()
-        messagebox.showinfo("Saved", f"Client {self.name_var.get()} saved successfully.")
+        messagebox.showinfo(
+            "Saved", f"Client {self.name_var.get()} saved successfully."
+        )
 
     def export_csv(self):
         if not self.clients:
             messagebox.showwarning("No Data", "No clients to export.")
             return
-        file = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV files", "*.csv")])
+        file = filedialog.asksaveasfilename(
+            defaultextension=".csv", filetypes=[("CSV files", "*.csv")]
+        )
         if file:
             with open(file, "w", newline="") as f:
                 writer = csv.writer(f)
-                writer.writerow(["Name", "Age", "Weight", "Program", "Adherence", "Notes"])
+                writer.writerow(
+                    ["Name", "Age", "Weight", "Program", "Adherence", "Notes"]
+                )
                 writer.writerows(self.clients)
             messagebox.showinfo("Exported", f"Client data exported to {file}")
 

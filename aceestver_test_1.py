@@ -19,6 +19,7 @@ def app_instance():
 # 1. INITIALIZATION TESTS
 # ==============================================================================
 
+
 def test_initialization_defaults(app_instance):
     """Verify clean starting state on app launch."""
     assert app_instance.clients == []
@@ -34,12 +35,18 @@ def test_initialization_defaults(app_instance):
 # 2. PROGRAM SELECTION & CALORIE TESTS
 # ==============================================================================
 
-@pytest.mark.parametrize("program_key, weight, expected_calories", [
-    ("Fat Loss (FL)", 80.0, 1760),       # 80 * 22
-    ("Muscle Gain (MG)", 70.0, 2450),     # 70 * 35
-    ("Beginner (BG)", 60.0, 1560),        # 60 * 26
-])
-def test_update_program_calorie_calculation(app_instance, program_key, weight, expected_calories):
+
+@pytest.mark.parametrize(
+    "program_key, weight, expected_calories",
+    [
+        ("Fat Loss (FL)", 80.0, 1760),  # 80 * 22
+        ("Muscle Gain (MG)", 70.0, 2450),  # 70 * 35
+        ("Beginner (BG)", 60.0, 1560),  # 60 * 26
+    ],
+)
+def test_update_program_calorie_calculation(
+    app_instance, program_key, weight, expected_calories
+):
     """Verify caloric estimation updates accurately based on program and weight."""
     app_instance.program_var.set(program_key)
     app_instance.weight_var.set(weight)
@@ -66,6 +73,7 @@ def test_update_program_with_zero_weight(app_instance):
 # 3. SAVE CLIENT TESTS
 # ==============================================================================
 
+
 @patch("aceestver_gymapp.messagebox.showwarning")
 def test_save_client_validation_missing_fields(mock_warning, app_instance):
     """Trigger validation warning when name or program is missing."""
@@ -73,7 +81,9 @@ def test_save_client_validation_missing_fields(mock_warning, app_instance):
     app_instance.program_var.set("Fat Loss (FL)")
     app_instance.save_client()
 
-    mock_warning.assert_called_once_with("Incomplete", "Please fill client name and program.")
+    mock_warning.assert_called_once_with(
+        "Incomplete", "Please fill client name and program."
+    )
     assert len(app_instance.clients) == 0
 
 
@@ -90,7 +100,14 @@ def test_save_client_success(mock_info, app_instance):
     app_instance.save_client()
 
     assert len(app_instance.clients) == 1
-    expected_client = ("Jane Doe", 28, 65.0, "Muscle Gain (MG)", 85, "Consistent with recovery")
+    expected_client = (
+        "Jane Doe",
+        28,
+        65.0,
+        "Muscle Gain (MG)",
+        85,
+        "Consistent with recovery",
+    )
     assert app_instance.clients[0] == expected_client
 
     # Verify insertion in Treeview
@@ -107,11 +124,12 @@ def test_save_client_success(mock_info, app_instance):
 # 4. CHART UPDATE TEST
 # ==============================================================================
 
+
 def test_update_chart(app_instance):
     """Check that Matplotlib axes update with client adherence data."""
     app_instance.clients = [
         ("Alice", 25, 60.0, "Fat Loss (FL)", 90, ""),
-        ("Bob", 30, 80.0, "Muscle Gain (MG)", 70, "")
+        ("Bob", 30, 80.0, "Muscle Gain (MG)", 70, ""),
     ]
     app_instance.update_chart()
 
@@ -124,6 +142,7 @@ def test_update_chart(app_instance):
 # ==============================================================================
 # 5. CSV EXPORT TESTS
 # ==============================================================================
+
 
 @patch("aceestver_gymapp.messagebox.showwarning")
 def test_export_csv_empty(mock_warning, app_instance):
@@ -150,7 +169,14 @@ def test_export_csv_success(mock_filedialog, mock_info, app_instance, tmp_path):
     with open(export_file, newline="") as f:
         rows = list(csv.reader(f))
         assert rows[0] == ["Name", "Age", "Weight", "Program", "Adherence", "Notes"]
-        assert rows[1] == ["John Doe", "32", "75.0", "Fat Loss (FL)", "80", "No knee pain"]
+        assert rows[1] == [
+            "John Doe",
+            "32",
+            "75.0",
+            "Fat Loss (FL)",
+            "80",
+            "No knee pain",
+        ]
 
     mock_info.assert_called_once()
 
@@ -158,6 +184,7 @@ def test_export_csv_success(mock_filedialog, mock_info, app_instance, tmp_path):
 # ==============================================================================
 # 6. RESET METHOD TEST
 # ==============================================================================
+
 
 def test_reset(app_instance):
     """Verify reset restores variables and clears plan boxes."""

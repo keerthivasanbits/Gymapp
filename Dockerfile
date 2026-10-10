@@ -30,4 +30,4 @@ RUN python -m venv .venv && \
 COPY . .
 
 # Run the Tkinter app
-CMD ["python", "aceestver-1.0.py"]
+CMD ["python", "aceestver_gymapp.py"]

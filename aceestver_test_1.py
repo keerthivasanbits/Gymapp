@@ -1,210 +1,181 @@
-import csv
-import pytest
+# ==============================================================================
+# REQUIREMENTS & USAGE:
+# 1. Install dependencies:
+#      pip install pytest
+# 2. Run locally:
+#      pytest aceestver_test_1.py -v
+# 3. Run headless in Docker / Linux server:
+#      xvfb-run -a pytest aceestver_test_1.py -v
+# ==============================================================================
+
 import tkinter as tk
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
+import pytest
 
 from aceestver_gymapp import ACEestApp
 
 
 @pytest.fixture
-def app_instance():
-    """Create a Tk root and ACEestApp instance, then tear it down."""
+def app_instance(tmp_path, monkeypatch):
+    """Initializes the Tkinter root and redirects database to an isolated temporary file."""
+    # Using a temporary file ensures connection persistence across operations
+    # while preventing residual test data from affecting production aceest_fitness.db
+    temp_db = str(tmp_path / "test_fitness.db")
+    monkeypatch.setattr("aceestver_gymapp.DB_NAME", temp_db)
+
     root = tk.Tk()
     app = ACEestApp(root)
     yield app
+
+    # Cleanup
+    try:
+        app.conn.close()
+    except Exception:
+        pass
     root.destroy()
 
 
 # ==============================================================================
-# 1. INITIALIZATION TESTS
+# 1. INITIALIZATION & DATABASE SCHEMA TESTS
 # ==============================================================================
 
 
 def test_initialization_defaults(app_instance):
-    """Verify clean starting state on app launch."""
-    assert app_instance.clients == []
-    assert app_instance.name_var.get() == ""
-    assert app_instance.age_var.get() == 0
-    assert app_instance.weight_var.get() == 0.0
-    assert app_instance.program_var.get() == ""
-    assert app_instance.progress_var.get() == 0
-    assert app_instance.notes_var.get() == ""
+    """Verify clean starting state for inputs on application startup."""
+    assert app_instance.name.get() == ""
+    assert app_instance.age.get() == 0
+    assert app_instance.weight.get() == 0.0
+    assert app_instance.program.get() == ""
+    assert app_instance.adherence.get() == 0
+
+
+def test_database_tables_created(app_instance):
+    """Ensure the clients and progress tables are created properly."""
+    app_instance.cur.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('clients', 'progress')"
+    )
+    tables = [row[0] for row in app_instance.cur.fetchall()]
+    assert "clients" in tables
+    assert "progress" in tables
 
 
 # ==============================================================================
-# 2. PROGRAM SELECTION & CALORIE TESTS
+# 2. CLIENT MANAGEMENT TESTS (SAVE & VALIDATION)
 # ==============================================================================
+
+
+@patch("aceestver_gymapp.messagebox.showerror")
+def test_save_client_validation_missing_name_or_program(
+    mock_err, app_instance
+):
+    """Ensure an error dialog is triggered when required fields are missing."""
+    app_instance.name.set("")
+    app_instance.program.set("Fat Loss (FL)")
+    app_instance.save_client()
+
+    mock_err.assert_called_once_with("Error", "Name and Program required")
+
+    # Ensure nothing was inserted into DB
+    app_instance.cur.execute("SELECT COUNT(*) FROM clients")
+    assert app_instance.cur.fetchone()[0] == 0
 
 
 @pytest.mark.parametrize(
-    "program_key, weight, expected_calories",
+    "program_name, weight, expected_calories",
     [
         ("Fat Loss (FL)", 80.0, 1760),  # 80 * 22
         ("Muscle Gain (MG)", 70.0, 2450),  # 70 * 35
         ("Beginner (BG)", 60.0, 1560),  # 60 * 26
     ],
 )
-def test_update_program_calorie_calculation(
-    app_instance, program_key, weight, expected_calories
+@patch("aceestver_gymapp.messagebox.showinfo")
+def test_save_client_success_and_calorie_calculation(
+    mock_info, app_instance, program_name, weight, expected_calories
 ):
-    """Verify caloric estimation updates accurately based on program and weight."""
-    app_instance.program_var.set(program_key)
-    app_instance.weight_var.set(weight)
-    app_instance.update_program()
+    """Ensure client record and calculated calories are stored accurately."""
+    app_instance.name.set("Jane Doe")
+    app_instance.age.set(28)
+    app_instance.weight.set(weight)
+    app_instance.program.set(program_name)
 
-    expected_text = f"Estimated Calories: {expected_calories} kcal"
-    assert app_instance.calorie_label.cget("text") == expected_text
+    app_instance.save_client()
 
-    # Verify workout text updated
-    workout_content = app_instance.workout_text.get("1.0", "end").strip()
-    assert workout_content == app_instance.programs[program_key]["workout"]
+    mock_info.assert_called_once_with("Saved", "Client data saved")
 
-
-def test_update_program_with_zero_weight(app_instance):
-    """Calories should not be calculated if weight is 0."""
-    app_instance.program_var.set("Fat Loss (FL)")
-    app_instance.weight_var.set(0.0)
-    app_instance.update_program()
-
-    assert app_instance.calorie_label.cget("text") == "Estimated Calories: --"
+    # Verify database contents
+    app_instance.cur.execute(
+        "SELECT age, weight, program, calories FROM clients WHERE name=?",
+        ("Jane Doe",),
+    )
+    row = app_instance.cur.fetchone()
+    assert row is not None
+    assert row[0] == 28
+    assert row[1] == weight
+    assert row[2] == program_name
+    assert row[3] == expected_calories
 
 
 # ==============================================================================
-# 3. SAVE CLIENT TESTS
+# 3. LOAD CLIENT TESTS
 # ==============================================================================
 
 
 @patch("aceestver_gymapp.messagebox.showwarning")
-def test_save_client_validation_missing_fields(mock_warning, app_instance):
-    """Trigger validation warning when name or program is missing."""
-    app_instance.name_var.set("")
-    app_instance.program_var.set("Fat Loss (FL)")
-    app_instance.save_client()
+def test_load_client_not_found(mock_warn, app_instance):
+    """Ensure a warning is displayed when loading a non-existent client."""
+    app_instance.name.set("Ghost")
+    app_instance.load_client()
 
-    mock_warning.assert_called_once_with(
-        "Incomplete", "Please fill client name and program."
+    mock_warn.assert_called_once_with("Not Found", "Client not found")
+
+
+def test_load_client_success(app_instance):
+    """Verify loading populates GUI variables and the summary text view."""
+    # Pre-populate client directly
+    app_instance.cur.execute(
+        """
+        INSERT INTO clients (name, age, weight, program, calories)
+        VALUES (?, ?, ?, ?, ?)
+    """,
+        ("Alice", 30, 65.0, "Beginner (BG)", 1690),
     )
-    assert len(app_instance.clients) == 0
+    app_instance.conn.commit()
+
+    # Query client via UI
+    app_instance.name.set("Alice")
+    app_instance.load_client()
+
+    assert app_instance.age.get() == 30
+    assert app_instance.weight.get() == 65.0
+    assert app_instance.program.get() == "Beginner (BG)"
+
+    summary_text = app_instance.summary.get("1.0", "end")
+    assert "Alice" in summary_text
+    assert "65.0 kg" in summary_text
+    assert "1690 kcal/day" in summary_text
+
+
+# ==============================================================================
+# 4. PROGRESS LOGGING TESTS
+# ==============================================================================
 
 
 @patch("aceestver_gymapp.messagebox.showinfo")
-def test_save_client_success(mock_info, app_instance):
-    """Verify successful client save into memory and table view."""
-    app_instance.name_var.set("Jane Doe")
-    app_instance.age_var.set(28)
-    app_instance.weight_var.set(65.0)
-    app_instance.program_var.set("Muscle Gain (MG)")
-    app_instance.progress_var.set(85)
-    app_instance.notes_var.set("Consistent with recovery")
+def test_save_progress_success(mock_info, app_instance):
+    """Ensure weekly adherence logs are written with current calendar week."""
+    app_instance.name.set("Alice")
+    app_instance.adherence.set(85)
 
-    app_instance.save_client()
+    app_instance.save_progress()
 
-    assert len(app_instance.clients) == 1
-    expected_client = (
-        "Jane Doe",
-        28,
-        65.0,
-        "Muscle Gain (MG)",
-        85,
-        "Consistent with recovery",
+    mock_info.assert_called_once_with("Progress Saved", "Weekly progress logged")
+
+    app_instance.cur.execute(
+        "SELECT client_name, adherence, week FROM progress WHERE client_name=?",
+        ("Alice",),
     )
-    assert app_instance.clients[0] == expected_client
-
-    # Verify insertion in Treeview
-    children = app_instance.client_table.get_children()
-    assert len(children) == 1
-    table_vals = app_instance.client_table.item(children[0])["values"]
-    assert table_vals[0] == "Jane Doe"
-    assert int(table_vals[4]) == 85
-
-    mock_info.assert_called_once()
-
-
-# ==============================================================================
-# 4. CHART UPDATE TEST
-# ==============================================================================
-
-
-def test_update_chart(app_instance):
-    """Check that Matplotlib axes update with client adherence data."""
-    app_instance.clients = [
-        ("Alice", 25, 60.0, "Fat Loss (FL)", 90, ""),
-        ("Bob", 30, 80.0, "Muscle Gain (MG)", 70, ""),
-    ]
-    app_instance.update_chart()
-
-    # Verify bar container exists and has 2 elements
-    assert len(app_instance.ax.patches) == 2
-    heights = [p.get_height() for p in app_instance.ax.patches]
-    assert heights == [90, 70]
-
-
-# ==============================================================================
-# 5. CSV EXPORT TESTS
-# ==============================================================================
-
-
-@patch("aceestver_gymapp.messagebox.showwarning")
-def test_export_csv_empty(mock_warning, app_instance):
-    """Warn user if attempting to export without client records."""
-    app_instance.clients = []
-    app_instance.export_csv()
-    mock_warning.assert_called_once_with("No Data", "No clients to export.")
-
-
-@patch("aceestver_gymapp.messagebox.showinfo")
-@patch("aceestver_gymapp.filedialog.asksaveasfilename")
-def test_export_csv_success(mock_filedialog, mock_info, app_instance, tmp_path):
-    """Export clients to a temporary CSV file and verify contents."""
-    export_file = tmp_path / "test_clients.csv"
-    mock_filedialog.return_value = str(export_file)
-
-    app_instance.clients = [
-        ("John Doe", 32, 75.0, "Fat Loss (FL)", 80, "No knee pain"),
-    ]
-
-    app_instance.export_csv()
-
-    assert export_file.exists()
-    with open(export_file, newline="") as f:
-        rows = list(csv.reader(f))
-        assert rows[0] == ["Name", "Age", "Weight", "Program", "Adherence", "Notes"]
-        assert rows[1] == [
-            "John Doe",
-            "32",
-            "75.0",
-            "Fat Loss (FL)",
-            "80",
-            "No knee pain",
-        ]
-
-    mock_info.assert_called_once()
-
-
-# ==============================================================================
-# 6. RESET METHOD TEST
-# ==============================================================================
-
-
-def test_reset(app_instance):
-    """Verify reset restores variables and clears plan boxes."""
-    app_instance.name_var.set("Test Name")
-    app_instance.age_var.set(30)
-    app_instance.weight_var.set(70.0)
-    app_instance.program_var.set("Fat Loss (FL)")
-    app_instance.progress_var.set(50)
-    app_instance.notes_var.set("Notes")
-
-    # Handles the unpatched TypeError if aceestver_gymapp.py reset() has missing args
-    try:
-        app_instance.reset()
-    except TypeError:
-        app_instance._update_text = MagicMock()
-        app_instance.reset()
-
-    assert app_instance.name_var.get() == ""
-    assert app_instance.age_var.get() == 0
-    assert app_instance.weight_var.get() == 0.0
-    assert app_instance.program_var.get() == ""
-    assert app_instance.progress_var.get() == 0
-    assert app_instance.notes_var.get() == ""
+    row = app_instance.cur.fetchone()
+    assert row is not None
+    assert row[0] == "Alice"
+    assert row[1] == 85
+    assert "Week" in row[2]

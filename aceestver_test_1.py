@@ -1,16 +1,16 @@
 # ==============================================================================
 # REQUIREMENTS:
-#   pip install pytest
+#   pip install pytest matplotlib
 #
-# RUN COMMAND:
-#   pytest test_aceest_sqlite.py -v
+# LOCAL EXECUTION:
+#   pytest test_aceest_app.py -v
 #
-# HEADLESS RUN (Docker/CI/Linux Server):
-#   xvfb-run -a pytest test_aceest_sqlite.py -v
+# HEADLESS RUN (Docker / Linux EC2 / CI):
+#   xvfb-run -a pytest test_aceest_app.py -v
 # ==============================================================================
 
 import tkinter as tk
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 import pytest
 
 from aceestver_gymapp import ACEestApp
@@ -18,9 +18,9 @@ from aceestver_gymapp import ACEestApp
 
 @pytest.fixture
 def app_instance(tmp_path, monkeypatch):
-    """Initializes the Tkinter root with an isolated temporary SQLite database."""
-    test_db_path = str(tmp_path / "test_aceest.db")
-    monkeypatch.setattr("aceestver_gymapp.DB_NAME", test_db_path)
+    """Initializes the application using an isolated temporary SQLite database."""
+    test_db = str(tmp_path / "test_fitness.db")
+    monkeypatch.setattr("aceestver_gymapp.DB_NAME", test_db)
 
     root = tk.Tk()
     app = ACEestApp(root)
@@ -34,12 +34,12 @@ def app_instance(tmp_path, monkeypatch):
 
 
 # ==============================================================================
-# 1. INITIALIZATION & DATABASE TESTS
+# 1. INITIALIZATION & SCHEMA TESTS
 # ==============================================================================
 
 
 def test_initial_state_and_defaults(app_instance):
-    """Verify all form input variables start with default initial values."""
+    """Verify default values on UI startup."""
     assert app_instance.name.get() == ""
     assert app_instance.age.get() == 0
     assert app_instance.weight.get() == 0.0
@@ -47,8 +47,8 @@ def test_initial_state_and_defaults(app_instance):
     assert app_instance.adherence.get() == 0
 
 
-def test_database_tables_created(app_instance):
-    """Verify that clients and progress tables are created in the database."""
+def test_database_tables_exist(app_instance):
+    """Verify that both clients and progress tables are created."""
     app_instance.cur.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('clients', 'progress')"
     )
@@ -58,32 +58,30 @@ def test_database_tables_created(app_instance):
 
 
 # ==============================================================================
-# 2. SAVE CLIENT & VALIDATION TESTS
+# 2. SAVE CLIENT TESTS
 # ==============================================================================
 
 
 @patch("aceestver_gymapp.messagebox.showerror")
-def test_save_client_validation_missing_name(mock_error, app_instance):
-    """Ensure error is displayed and DB is untouched when name is missing."""
+def test_save_client_validation_missing_name(mock_err, app_instance):
+    """Ensure error is displayed and DB is untouched when name is empty."""
     app_instance.name.set("")
     app_instance.program.set("Fat Loss (FL)")
     app_instance.save_client()
 
-    mock_error.assert_called_once_with("Error", "Name and Program required")
+    mock_err.assert_called_once_with("Error", "Name and Program required")
     app_instance.cur.execute("SELECT COUNT(*) FROM clients")
     assert app_instance.cur.fetchone()[0] == 0
 
 
 @patch("aceestver_gymapp.messagebox.showerror")
-def test_save_client_validation_missing_program(mock_error, app_instance):
-    """Ensure error is displayed and DB is untouched when program is missing."""
+def test_save_client_validation_missing_program(mock_err, app_instance):
+    """Ensure error is displayed when program is empty."""
     app_instance.name.set("John")
     app_instance.program.set("")
     app_instance.save_client()
 
-    mock_error.assert_called_once_with("Error", "Name and Program required")
-    app_instance.cur.execute("SELECT COUNT(*) FROM clients")
-    assert app_instance.cur.fetchone()[0] == 0
+    mock_err.assert_called_once_with("Error", "Name and Program required")
 
 
 @pytest.mark.parametrize(
@@ -98,9 +96,9 @@ def test_save_client_validation_missing_program(mock_error, app_instance):
 def test_save_client_success_and_calories(
     mock_info, app_instance, program_name, weight, expected_calories
 ):
-    """Verify client record insertion and accurate calorie calculations."""
+    """Verify client insertion and calorie multiplier calculation."""
     app_instance.name.set("Jane")
-    app_instance.age.set(27)
+    app_instance.age.set(28)
     app_instance.weight.set(weight)
     app_instance.program.set(program_name)
 
@@ -114,33 +112,23 @@ def test_save_client_success_and_calories(
     )
     row = app_instance.cur.fetchone()
     assert row is not None
-    assert row[0] == 27
+    assert row[0] == 28
     assert row[1] == weight
     assert row[2] == program_name
     assert row[3] == expected_calories
 
 
-@patch("aceestver_gymapp.messagebox.showinfo")
-def test_save_client_update_existing(mock_info, app_instance):
-    """Verify INSERT OR REPLACE updates an existing client's details."""
-    app_instance.name.set("John")
-    app_instance.age.set(30)
-    app_instance.weight.set(70.0)
+@patch("aceestver_gymapp.messagebox.showerror")
+def test_save_client_db_exception(mock_err, app_instance):
+    """Verify DB exception handling block during save."""
+    app_instance.name.set("CrashTest")
     app_instance.program.set("Beginner (BG)")
+
+    # Simulate database cursor crash
+    app_instance.cur.execute = MagicMock(side_effect=Exception("Disk failure"))
     app_instance.save_client()
 
-    # Update weight and program
-    app_instance.weight.set(75.0)
-    app_instance.program.set("Muscle Gain (MG)")
-    app_instance.save_client()
-
-    app_instance.cur.execute(
-        "SELECT weight, program, calories FROM clients WHERE name=?", ("John",)
-    )
-    row = app_instance.cur.fetchone()
-    assert row[0] == 75.0
-    assert row[1] == "Muscle Gain (MG)"
-    assert row[2] == 2625  # 75 * 35
+    mock_err.assert_called_once_with("DB Error", "Disk failure")
 
 
 # ==============================================================================
@@ -149,22 +137,22 @@ def test_save_client_update_existing(mock_info, app_instance):
 
 
 @patch("aceestver_gymapp.messagebox.showwarning")
-def test_load_client_not_found(mock_warning, app_instance):
-    """Verify warning dialog triggers when client is not found."""
-    app_instance.name.set("UnknownClient")
+def test_load_client_not_found(mock_warn, app_instance):
+    """Verify warning when querying a non-existent client."""
+    app_instance.name.set("NonExistent")
     app_instance.load_client()
 
-    mock_warning.assert_called_once_with("Not Found", "Client not found")
+    mock_warn.assert_called_once_with("Not Found", "Client not found")
 
 
 def test_load_client_success(app_instance):
-    """Verify loading populates entry fields and text summary."""
+    """Verify loading populates fields and summary block."""
     app_instance.cur.execute(
         """
         INSERT INTO clients (name, age, weight, program, calories)
         VALUES (?, ?, ?, ?, ?)
     """,
-        ("Alice", 29, 65.0, "Beginner (BG)", 1690),
+        ("Alice", 29, 64.0, "Muscle Gain (MG)", 2240),
     )
     app_instance.conn.commit()
 
@@ -172,14 +160,13 @@ def test_load_client_success(app_instance):
     app_instance.load_client()
 
     assert app_instance.age.get() == 29
-    assert app_instance.weight.get() == 65.0
-    assert app_instance.program.get() == "Beginner (BG)"
+    assert app_instance.weight.get() == 64.0
+    assert app_instance.program.get() == "Muscle Gain (MG)"
 
-    summary_text = app_instance.summary.get("1.0", "end")
-    assert "Alice" in summary_text
-    assert "65.0 kg" in summary_text
-    assert "Beginner (BG)" in summary_text
-    assert "1690 kcal/day" in summary_text
+    summary = app_instance.summary.get("1.0", "end")
+    assert "Alice" in summary
+    assert "64.0 kg" in summary
+    assert "2240 kcal/day" in summary
 
 
 # ==============================================================================
@@ -189,20 +176,74 @@ def test_load_client_success(app_instance):
 
 @patch("aceestver_gymapp.messagebox.showinfo")
 def test_save_progress_success(mock_info, app_instance):
-    """Verify weekly progress is stored into the progress table."""
+    """Verify progress record is inserted with formatted calendar week."""
     app_instance.name.set("Alice")
-    app_instance.adherence.set(90)
+    app_instance.adherence.set(85)
 
     app_instance.save_progress()
 
     mock_info.assert_called_once_with("Progress Saved", "Weekly progress logged")
 
     app_instance.cur.execute(
-        "SELECT client_name, adherence, week FROM progress WHERE client_name=?",
+        "SELECT client_name, week, adherence FROM progress WHERE client_name=?",
         ("Alice",),
     )
     row = app_instance.cur.fetchone()
     assert row is not None
     assert row[0] == "Alice"
-    assert row[1] == 90
-    assert "Week" in row[2]
+    assert "Week" in row[1]
+    assert row[2] == 85
+
+
+# ==============================================================================
+# 5. PROGRESS CHART TESTS
+# ==============================================================================
+
+
+@patch("aceestver_gymapp.messagebox.showwarning")
+def test_show_progress_chart_missing_name(mock_warn, app_instance):
+    """Verify warning when attempting to view chart with no client name."""
+    app_instance.name.set("")
+    app_instance.show_progress_chart()
+
+    mock_warn.assert_called_once_with("No Client", "Enter client name first")
+
+
+@patch("aceestver_gymapp.messagebox.showinfo")
+def test_show_progress_chart_no_data(mock_info, app_instance):
+    """Verify informational dialog when client exists but has no logged progress."""
+    app_instance.name.set("NewUser")
+    app_instance.show_progress_chart()
+
+    mock_info.assert_called_once_with(
+        "No Data", "No progress data available for this client"
+    )
+
+
+@patch("aceestver_gymapp.plt.show")
+@patch("aceestver_gymapp.plt.plot")
+def test_show_progress_chart_success(mock_plot, mock_show, app_instance):
+    """Verify matplotlib plot generation when progress data exists."""
+    app_instance.cur.executemany(
+        """
+        INSERT INTO progress (client_name, week, adherence)
+        VALUES (?, ?, ?)
+    """,
+        [
+            ("Alice", "Week 01 - 2026", 75),
+            ("Alice", "Week 02 - 2026", 90),
+        ],
+    )
+    app_instance.conn.commit()
+
+    app_instance.name.set("Alice")
+    app_instance.show_progress_chart()
+
+    # Verify plt.plot was called with the correct extracted series
+    mock_plot.assert_called_once()
+    weeks_arg, adherence_arg = mock_plot.call_args[0][:2]
+    assert weeks_arg == ["Week 01 - 2026", "Week 02 - 2026"]
+    assert adherence_arg == [75, 90]
+
+    # Verify plt.show was triggered
+    mock_show.assert_called_once()

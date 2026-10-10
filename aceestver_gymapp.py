@@ -1,8 +1,9 @@
+import csv
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-import csv
+
 
 class ACEestApp:
     def __init__(self, root):
@@ -14,15 +15,24 @@ class ACEestApp:
         self.clients = []  # store multiple clients
 
         self.programs = {
-            "Fat Loss (FL)": {"workout": "Back Squat, Cardio, Bench, Deadlift, Recovery",
-                              "diet": "Egg Whites, Chicken, Fish Curry",
-                              "color": "#e74c3c", "calorie_factor": 22},
-            "Muscle Gain (MG)": {"workout": "Squat, Bench, Deadlift, Press, Rows",
-                                 "diet": "Eggs, Biryani, Mutton Curry",
-                                 "color": "#2ecc71", "calorie_factor": 35},
-            "Beginner (BG)": {"workout": "Air Squats, Ring Rows, Push-ups",
-                              "diet": "Balanced Tamil Meals",
-                              "color": "#3498db", "calorie_factor": 26}
+            "Fat Loss (FL)": {
+                "workout": "Back Squat, Cardio, Bench, Deadlift, Recovery",
+                "diet": "Egg Whites, Chicken, Fish Curry",
+                "color": "#e74c3c",
+                "calorie_factor": 22
+            },
+            "Muscle Gain (MG)": {
+                "workout": "Squat, Bench, Deadlift, Press, Rows",
+                "diet": "Eggs, Biryani, Mutton Curry",
+                "color": "#2ecc71",
+                "calorie_factor": 35
+            },
+            "Beginner (BG)": {
+                "workout": "Air Squats, Ring Rows, Push-ups",
+                "diet": "Balanced Tamil Meals",
+                "color": "#3498db",
+                "calorie_factor": 26
+            }
         }
 
         self.setup_ui()
@@ -30,15 +40,25 @@ class ACEestApp:
     def setup_ui(self):
         header = tk.Frame(self.root, bg="#d4af37", height=80)
         header.pack(fill="x")
-        tk.Label(header, text="ACEest FUNCTIONAL FITNESS SYSTEM v2",
-                 font=("Helvetica", 24, "bold"), bg="#d4af37", fg="black").pack(pady=20)
+        tk.Label(
+            header,
+            text="ACEest FUNCTIONAL FITNESS SYSTEM v2",
+            font=("Helvetica", 24, "bold"),
+            bg="#d4af37",
+            fg="black"
+        ).pack(pady=20)
 
         main = tk.Frame(self.root, bg="#1a1a1a")
         main.pack(fill="both", expand=True, padx=20, pady=20)
 
-        # LEFT PANEL – CLIENT PROFILE
-        left = tk.LabelFrame(main, text=" Client Profile ", bg="#1a1a1a",
-                             fg="#d4af37", font=("Arial", 12, "bold"))
+        # LEFT PANEL - CLIENT PROFILE
+        left = tk.LabelFrame(
+            main,
+            text=" Client Profile ",
+            bg="#1a1a1a",
+            fg="#d4af37",
+            font=("Arial", 12, "bold")
+        )
         left.pack(side="left", fill="y", padx=10)
 
         self.name_var = tk.StringVar()
@@ -53,8 +73,12 @@ class ACEestApp:
         self._input(left, "Weight (kg)", self.weight_var)
 
         tk.Label(left, text="Program", bg="#1a1a1a", fg="white").pack(pady=5)
-        self.program_box = ttk.Combobox(left, textvariable=self.program_var,
-                                        values=list(self.programs.keys()), state="readonly")
+        self.program_box = ttk.Combobox(
+            left,
+            textvariable=self.program_var,
+            values=list(self.programs.keys()),
+            state="readonly"
+        )
         self.program_box.pack(padx=20)
         self.program_box.bind("<<ComboboxSelected>>", self.update_program)
 
@@ -68,23 +92,32 @@ class ACEestApp:
         ttk.Button(left, text="Export CSV", command=self.export_csv).pack(pady=5)
         ttk.Button(left, text="Reset", command=self.reset).pack()
 
-        # RIGHT PANEL – PROGRAM DETAILS
+        # RIGHT PANEL - PROGRAM DETAILS
         right = tk.Frame(main, bg="#1a1a1a")
         right.pack(side="right", fill="both", expand=True)
 
         self.workout_text = self._scrollable_block(right, " Weekly Training Plan ")
         self.diet_text = self._scrollable_block(right, " Nutrition Plan ")
 
-        self.calorie_label = tk.Label(right, text="Estimated Calories: --",
-                                      bg="#1a1a1a", fg="#d4af37", font=("Arial", 12, "bold"))
+        self.calorie_label = tk.Label(
+            right,
+            text="Estimated Calories: --",
+            bg="#1a1a1a",
+            fg="#d4af37",
+            font=("Arial", 12, "bold")
+        )
         self.calorie_label.pack(pady=10)
 
         # CLIENT LIST TABLE
         table_frame = tk.LabelFrame(right, text=" Client List ", bg="#1a1a1a", fg="#d4af37")
         table_frame.pack(fill="both", expand=True, pady=10)
 
-        self.client_table = ttk.Treeview(table_frame, columns=("Name", "Age", "Weight", "Program", "Adherence", "Notes"),
-                                         show="headings", height=6)
+        self.client_table = ttk.Treeview(
+            table_frame,
+            columns=("Name", "Age", "Weight", "Program", "Adherence", "Notes"),
+            show="headings",
+            height=6
+        )
         for col in self.client_table["columns"]:
             self.client_table.heading(col, text=col)
         self.client_table.pack(fill="both", expand=True)
@@ -111,7 +144,8 @@ class ACEestApp:
 
     def update_program(self, event=None):
         program = self.program_var.get()
-        if not program: return
+        if not program:
+            return
         data = self.programs[program]
         self._update_text(self.workout_text, data["workout"], data["color"])
         self._update_text(self.diet_text, data["diet"], "white")
@@ -129,8 +163,14 @@ class ACEestApp:
         if not self.name_var.get() or not self.program_var.get():
             messagebox.showwarning("Incomplete", "Please fill client name and program.")
             return
-        client = (self.name_var.get(), self.age_var.get(), self.weight_var.get(),
-                  self.program_var.get(), self.progress_var.get(), self.notes_var.get())
+        client = (
+            self.name_var.get(),
+            self.age_var.get(),
+            self.weight_var.get(),
+            self.program_var.get(),
+            self.progress_var.get(),
+            self.notes_var.get()
+        )
         self.clients.append(client)
         self.client_table.insert("", "end", values=client)
         self.update_chart()
@@ -165,4 +205,11 @@ class ACEestApp:
         self.progress_var.set(0)
         self.notes_var.set("")
         self._update_text(self.workout_text, "", "white")
-        self._update_text(self.diet_text,)
+        self._update_text(self.diet_text, "", "white")  # Fixed missing arguments
+
+
+# Main execution block to keep GUI window open
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = ACEestApp(root)
+    root.mainloop()

@@ -3,10 +3,10 @@
 #   pip install pytest matplotlib
 #
 # LOCAL EXECUTION:
-#   pytest test_aceest_app.py -v
+#   pytest aceestver_test_1.py -v
 #
 # HEADLESS RUN (Docker / Linux EC2 / CI):
-#   xvfb-run -a pytest test_aceest_app.py -v
+#   xvfb-run -a pytest aceestver_test_1.py -v
 # ==============================================================================
 
 import tkinter as tk
@@ -124,8 +124,11 @@ def test_save_client_db_exception(mock_err, app_instance):
     app_instance.name.set("CrashTest")
     app_instance.program.set("Beginner (BG)")
 
-    # Simulate database cursor crash
-    app_instance.cur.execute = MagicMock(side_effect=Exception("Disk failure"))
+    # Replace cursor object directly with a mock to avoid read-only attribute errors
+    mock_cursor = MagicMock()
+    mock_cursor.execute.side_effect = Exception("Disk failure")
+    app_instance.cur = mock_cursor
+
     app_instance.save_client()
 
     mock_err.assert_called_once_with("DB Error", "Disk failure")
@@ -224,6 +227,10 @@ def test_show_progress_chart_no_data(mock_info, app_instance):
 @patch("aceestver_gymapp.plt.plot")
 def test_show_progress_chart_success(mock_plot, mock_show, app_instance):
     """Verify matplotlib plot generation when progress data exists."""
+    # Clear residual records created in prior tests
+    app_instance.cur.execute("DELETE FROM progress")
+    app_instance.conn.commit()
+
     app_instance.cur.executemany(
         """
         INSERT INTO progress (client_name, week, adherence)

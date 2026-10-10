@@ -18,7 +18,8 @@ class ACEestApp:
         self.setup_ui()
 
     def init_db(self):
-        self.conn = sqlite3.connect("aceest_fitness.db")
+        # Uses DB_NAME so test monkeypatching works correctly
+        self.conn = sqlite3.connect(DB_NAME)
         self.cur = self.conn.cursor()
 
         self.cur.execute("""
@@ -114,7 +115,7 @@ class ACEestApp:
 
         try:
             self.cur.execute("""
-                INSERT OR REPLACE INTO clients
+                INSERT OR REPLACE INTO clients 
                 (name, age, weight, program, calories)
                 VALUES (?, ?, ?, ?, ?)
             """, (self.name.get(), self.age.get(),
@@ -163,8 +164,8 @@ Calories  : {calories} kcal/day
             return
 
         self.cur.execute("""
-            SELECT week, adherence
-            FROM progress
+            SELECT week, adherence 
+            FROM progress 
             WHERE client_name=?
             ORDER BY id
         """, (self.name.get(),))

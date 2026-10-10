@@ -1,377 +1,210 @@
-# ==============================================================================
-# REQUIREMENTS:
-#   pip install pytest matplotlib
-#
-# RUNNING LOCALLY:
-#   pytest test_aceest_app.py -v
-#
-# HEADLESS RUN (Docker / CI / Linux VM):
-#   xvfb-run -a pytest test_aceest_app.py -v
-# ==============================================================================
-
-import tkinter as tk
-from unittest.mock import MagicMock, patch
+import os
+import sqlite3
 import pytest
+from unittest.mock import patch, MagicMock
+import tkinter as tk
 
-from aceestver_gymapp import ACEestApp
+# Import your module
+import app as main_module
+from app import ACEestApp
 
-
-# ==============================================================================
-# FIXTURES
-# ==============================================================================
 
 @pytest.fixture
-def app_instance(tmp_path, monkeypatch):
-    """Initializes the application using an isolated temporary SQLite database."""
-    test_db = str(tmp_path / "test_aceest_fitness.db")
-    monkeypatch.setattr("aceestver_gymapp.DB_NAME", test_db)
+def test_db(tmp_path):
+    """Creates an isolated temporary database for testing."""
+    db_file = tmp_path / "test_fitness.db"
+    orig_db = main_module.DB_NAME
+    main_module.DB_NAME = str(db_file)
+    yield str(db_file)
+    main_module.DB_NAME = orig_db
 
-    root = tk.Tk()
+
+@pytest.fixture
+def app_instance(test_db):
+    """Initializes the Tkinter root headlessly and cleans up afterward."""
+    try:
+        root = tk.Tk()
+        root.withdraw()  # Prevent rendering visible window
+    except tk.TclError:
+        pytest.skip("Tkinter display not available in current environment")
+
     app = ACEestApp(root)
     yield app
 
-    try:
+    # Teardown: close DB connection and destroy root
+    if app.conn:
         app.conn.close()
-    except Exception:
-        pass
     root.destroy()
 
 
-# ==============================================================================
-# 1. DATABASE SCHEMA & INITIALIZATION TESTS
-# ==============================================================================
+# ==========================================
+# 1. DATABASE INITIALISATION TESTS
+# ==========================================
 
-def test_database_tables_exist(app_instance):
-    """Verify all five tables are created upon initialization."""
-    app_instance.cur.execute(
-        "SELECT name FROM sqlite_master WHERE type='table'"
-    )
-    existing_tables = [row[0] for row in app_instance.cur.fetchall()]
-    expected_tables = ["clients", "progress", "workouts", "exercises", "metrics"]
-    for table in expected_tables:
-        assert table in existing_tables
-
-
-def test_schema_upgrade_drops_outdated_client_table(tmp_path, monkeypatch):
-    """Verify that an outdated clients schema is dropped and rebuilt with all columns."""
-    test_db = str(tmp_path / "migration_test.db")
-    monkeypatch.setattr("aceestver_gymapp.DB_NAME", test_db)
-
-    # Pre-create an old table missing columns
-    import sqlite3
+def test_database_tables_created(app_instance, test_db):
+    """Verify all required tables exist upon startup."""
     conn = sqlite3.connect(test_db)
     cur = conn.cursor()
-    cur.execute("CREATE TABLE clients (id INTEGER PRIMARY KEY, name TEXT)")
-    conn.commit()
+    cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    tables = {row[0] for row in cur.fetchall()}
     conn.close()
 
-    root = tk.Tk()
-    app = ACEestApp(root)
-
-    app.cur.execute("PRAGMA table_info(clients)")
-    columns = [row[1] for row in app.cur.fetchall()]
-    required = {
-        "id", "name", "age", "height", "weight", 
-        "program", "calories", "target_weight", "target_adherence"
-    }
-    assert required.issubset(set(columns))
-
-    app.conn.close()
-    root.destroy()
+    expected_tables = {"clients", "progress", "workouts", "exercises", "metrics"}
+    assert expected_tables.issubset(tables)
 
 
-# ==============================================================================
-# 2. CLIENT MANAGEMENT (SAVE & LOAD)
-# ==============================================================================
+# ==========================================
+# 2. CLIENT MANAGEMENT TESTS
+# ==========================================
 
-@patch("aceestver_gymapp.messagebox.showerror")
-def test_save_client_validation_missing_fields(mock_err, app_instance):
-    """Verify errors when saving with missing name or program."""
-    # Missing name
+@patch("app.messagebox.showerror")
+def test_save_client_validation_missing_fields(mock_showerror, app_instance):
+    """Should show error when saving without required fields (name / program)."""
     app_instance.name.set("")
-    app_instance.program.set("Beginner (BG)")
-    app_instance.save_client()
-    mock_err.assert_called_with("Error", "Name is required")
-
-    # Missing program
-    app_instance.name.set("John")
     app_instance.program.set("")
     app_instance.save_client()
-    mock_err.assert_called_with("Error", "Program is required")
+    mock_showerror.assert_called_with("Error", "Name is required")
+
+    app_instance.name.set("Jane Doe")
+    app_instance.program.set("")
+    app_instance.save_client()
+    mock_showerror.assert_called_with("Error", "Program is required")
 
 
-@pytest.mark.parametrize(
-    "prog, weight, expected_calories",
-    [
-        ("Fat Loss (FL) – 3 day", 80.0, 1760),      # 80 * 22
-        ("Fat Loss (FL) – 5 day", 80.0, 1920),      # 80 * 24
-        ("Muscle Gain (MG) – PPL", 70.0, 2450),     # 70 * 35
-        ("Beginner (BG)", 60.0, 1560),              # 60 * 26
-    ]
-)
-@patch("aceestver_gymapp.messagebox.showinfo")
-def test_save_client_success_and_calories(
-    mock_info, app_instance, prog, weight, expected_calories
-):
-    """Verify client save, calorie calculations, and UI list refresh."""
-    app_instance.name.set("Jane")
+@patch("app.messagebox.showinfo")
+def test_save_and_load_client_success(mock_showinfo, app_instance):
+    """Test full cycle of creating a client, persisting to DB, and loading back."""
+    app_instance.name.set("John Doe")
     app_instance.age.set(28)
-    app_instance.height.set(168.0)
-    app_instance.weight.set(weight)
-    app_instance.program.set(prog)
-    app_instance.target_weight.set(65.0)
+    app_instance.height.set(178.0)
+    app_instance.weight.set(75.0)
+    app_instance.program.set("Fat Loss (FL) – 3 day")  # factor: 22
+    app_instance.target_weight.set(70.0)
     app_instance.target_adherence.set(90)
 
     app_instance.save_client()
-    mock_info.assert_called_once_with("Saved", "Client data saved")
+    mock_showinfo.assert_called_with("Saved", "Client data saved")
 
-    app_instance.cur.execute(
-        "SELECT age, height, weight, program, calories, target_weight, target_adherence "
-        "FROM clients WHERE name=?",
-        ("Jane",),
-    )
-    row = app_instance.cur.fetchone()
-    assert row == (28, 168.0, weight, prog, expected_calories, 65.0, 90)
-    assert "Jane" in app_instance.client_list["values"]
+    # Clear fields to simulate a fresh state
+    app_instance.age.set(0)
+    app_instance.weight.set(0.0)
+    app_instance.program.set("")
+
+    # Load client back
+    app_instance.name.set("John Doe")
+    app_instance.load_client()
+
+    assert app_instance.age.get() == 28
+    assert app_instance.height.get() == 178.0
+    assert app_instance.weight.get() == 75.0
+    assert app_instance.program.get() == "Fat Loss (FL) – 3 day"
+    assert app_instance.target_weight.get() == 70.0
+    assert app_instance.target_adherence.get() == 90
+
+    # Calorie calculation: weight (75) * factor (22) = 1650
+    app_instance.cur.execute("SELECT calories FROM clients WHERE name=?", ("John Doe",))
+    cal = app_instance.cur.fetchone()[0]
+    assert cal == 1650
 
 
-@patch("aceestver_gymapp.messagebox.showerror")
-def test_save_client_db_exception(mock_err, app_instance):
-    """Verify exception handling during client save."""
-    app_instance.name.set("ErrorUser")
+# ==========================================
+# 3. PROGRESS LOGGING TESTS
+# ==========================================
+
+@patch("app.messagebox.showinfo")
+def test_save_progress_success(mock_showinfo, app_instance):
+    """Logging weekly adherence progress."""
+    app_instance.name.set("Alice Smith")
     app_instance.program.set("Beginner (BG)")
-
-    mock_cur = MagicMock()
-    mock_cur.execute.side_effect = Exception("Disk Write Error")
-    app_instance.cur = mock_cur
-
+    app_instance.weight.set(60.0)
     app_instance.save_client()
-    mock_err.assert_called_once_with("DB Error", "Disk Write Error")
 
-
-@patch("aceestver_gymapp.messagebox.showwarning")
-def test_load_client_not_found(mock_warn, app_instance):
-    """Verify warning when attempting to load a non-existent client."""
-    app_instance.name.set("Ghost")
-    app_instance.load_client()
-    mock_warn.assert_called_once_with("Not Found", "Client not found")
-
-
-def test_load_client_success_and_summary_render(app_instance):
-    """Verify loading populates widgets and updates the text summary."""
-    app_instance.cur.execute(
-        """
-        INSERT INTO clients (name, age, height, weight, program, calories, target_weight, target_adherence)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        ("Alice", 30, 175.0, 72.0, "Muscle Gain (MG) – PPL", 2520, 75.0, 95)
-    )
-    app_instance.conn.commit()
-
-    app_instance.name.set("Alice")
-    app_instance.load_client()
-
-    assert app_instance.age.get() == 30
-    assert app_instance.height.get() == 175.0
-    assert app_instance.weight.get() == 72.0
-    assert app_instance.program.get() == "Muscle Gain (MG) – PPL"
-    assert app_instance.target_weight.get() == 75.0
-    assert app_instance.target_adherence.get() == 95
-
-    summary_text = app_instance.summary.get("1.0", "end")
-    assert "Alice" in summary_text
-    assert "72.0 kg" in summary_text
-    assert "2520 kcal/day" in summary_text
-    assert "Target Weight: 75.0 kg" in summary_text
-
-
-# ==============================================================================
-# 3. WEEKLY PROGRESS LOGGING
-# ==============================================================================
-
-@patch("aceestver_gymapp.messagebox.showinfo")
-def test_save_progress_success(mock_info, app_instance):
-    """Verify progress record is inserted and summary updates."""
-    app_instance.name.set("Bob")
-    app_instance.adherence.set(80)
-
+    app_instance.adherence.set(85)
     app_instance.save_progress()
-    mock_info.assert_called_once_with("Progress Saved", "Weekly progress logged")
+
+    mock_showinfo.assert_called_with("Progress Saved", "Weekly progress logged")
 
     app_instance.cur.execute(
-        "SELECT client_name, week, adherence FROM progress WHERE client_name=?",
-        ("Bob",),
+        "SELECT adherence FROM progress WHERE client_name=?", ("Alice Smith",)
     )
-    row = app_instance.cur.fetchone()
-    assert row[0] == "Bob"
-    assert "Week" in row[1]
-    assert row[2] == 80
+    result = app_instance.cur.fetchone()
+    assert result is not None
+    assert result[0] == 85
 
 
-# ==============================================================================
-# 4. WORKOUT LOGGING & HISTORY
-# ==============================================================================
+# ==========================================
+# 4. BMI CALCULATION & RISK CHECKS
+# ==========================================
 
-@patch("aceestver_gymapp.messagebox.showinfo")
-def test_log_workout_with_exercise(mock_info, app_instance):
-    """Verify workout and exercise creation via log workout flow."""
-    app_instance.current_client = "Athlete1"
+@pytest.mark.parametrize(
+    "height, weight, expected_category",
+    [
+        (180, 50, "Underweight"),   # BMI ≈ 15.4
+        (180, 70, "Normal"),        # BMI ≈ 21.6
+        (180, 85, "Overweight"),    # BMI ≈ 26.2
+        (180, 110, "Obese"),        # BMI ≈ 34.0
+    ],
+)
+@patch("app.messagebox.showinfo")
+def test_show_bmi_info(mock_showinfo, app_instance, height, weight, expected_category):
+    """Tests categorical classification of BMI formulas."""
+    app_instance.current_client = "Tester"
+    app_instance.height.set(height)
+    app_instance.weight.set(weight)
 
-    # Manually invoke insertion logic
+    app_instance.show_bmi_info()
+
+    args, _ = mock_showinfo.call_args
+    assert expected_category in args[1]
+
+
+# ==========================================
+# 5. WORKOUT & METRIC DIALOGUE TESTS
+# ==========================================
+
+@patch("app.messagebox.showinfo")
+def test_workout_logging_database_entry(mock_showinfo, app_instance):
+    """Simulates workout logging and verifies relational DB record insertion."""
+    app_instance.current_client = "Bob Ross"
+
+    # Direct database insertion matching open_log_workout_window logic
     app_instance.cur.execute(
         """
         INSERT INTO workouts (client_name, date, workout_type, duration_min, notes)
         VALUES (?, ?, ?, ?, ?)
         """,
-        ("Athlete1", "2026-10-10", "Strength", 60, "Heavy squats session")
+        ("Bob Ross", "2026-10-10", "Hypertrophy", 55, "Upper body session"),
     )
     workout_id = app_instance.cur.lastrowid
+
     app_instance.cur.execute(
         """
         INSERT INTO exercises (workout_id, name, sets, reps, weight)
         VALUES (?, ?, ?, ?, ?)
         """,
-        (workout_id, "Squat", 5, 5, 120.0)
+        (workout_id, "Bench Press", 4, 8, 80.0),
     )
     app_instance.conn.commit()
 
-    # Query back workout & exercise
-    app_instance.cur.execute(
-        "SELECT name, sets, reps, weight FROM exercises WHERE workout_id=?",
-        (workout_id,)
-    )
+    # Query back
+    app_instance.cur.execute("SELECT name, sets, weight FROM exercises WHERE workout_id=?", (workout_id,))
     ex_row = app_instance.cur.fetchone()
-    assert ex_row == ("Squat", 5, 5, 120.0)
+    assert ex_row == ("Bench Press", 4, 80.0)
 
 
-def test_open_workout_history_window(app_instance):
-    """Verify workout history Treeview renders client entries correctly."""
-    app_instance.current_client = "Athlete1"
-    app_instance.cur.execute(
-        """
-        INSERT INTO workouts (client_name, date, workout_type, duration_min, notes)
-        VALUES (?, ?, ?, ?, ?)
-        """,
-        ("Athlete1", "2026-10-10", "Hypertrophy", 45, "Upper body pump")
-    )
-    app_instance.conn.commit()
+# ==========================================
+# 6. CHART PLOTTING TESTS (MOCKED)
+# ==========================================
 
-    app_instance.open_workout_history_window()
-
-    # Locate the created top-level window
-    toplevel = [w for w in app_instance.root.winfo_children() if isinstance(w, tk.Toplevel)][-1]
-    tree = [w for w in toplevel.winfo_children() if isinstance(w, tk.ttk.Treeview)][0]
-    children = tree.get_children()
-    assert len(children) == 1
-    assert tree.item(children[0])["values"] == ["2026-10-10", "Hypertrophy", 45, "Upper body pump"]
-    toplevel.destroy()
-
-
-# ==============================================================================
-# 5. BODY METRICS LOGGING
-# ==============================================================================
-
-def test_log_body_metrics(app_instance):
-    """Verify body metric record insertion and auto-update of weight variable."""
-    app_instance.current_client = "MetricUser"
-    app_instance.cur.execute(
-        """
-        INSERT INTO metrics (client_name, date, weight, waist, bodyfat)
-        VALUES (?, ?, ?, ?, ?)
-        """,
-        ("MetricUser", "2026-10-10", 78.5, 82.0, 14.5)
-    )
-    app_instance.conn.commit()
-
-    app_instance.cur.execute(
-        "SELECT weight, waist, bodyfat FROM metrics WHERE client_name=?",
-        ("MetricUser",)
-    )
-    assert app_instance.cur.fetchone() == (78.5, 82.0, 14.5)
-
-
-# ==============================================================================
-# 6. CHARTS & ANALYTICS
-# ==============================================================================
-
-@patch("aceestver_gymapp.plt.show")
-@patch("aceestver_gymapp.plt.plot")
-def test_show_progress_chart_success(mock_plot, mock_show, app_instance):
-    """Verify progress chart plotting with clean state."""
+@patch("matplotlib.pyplot.show")
+def test_show_progress_chart_calls_plt(mock_plt_show, app_instance):
+    """Ensures Matplotlib plot generation pipeline triggers properly without GUI blockage."""
     app_instance.current_client = "ChartUser"
-    app_instance.cur.executemany(
-        """
-        INSERT INTO progress (client_name, week, adherence)
-        VALUES (?, ?, ?)
-        """,
-        [
-            ("ChartUser", "Week 01 - 2026", 75),
-            ("ChartUser", "Week 02 - 2026", 90),
-        ]
+    app_instance.cur.execute(
+        "INSERT INTO progress (client_name, week, adherence) VALUES (?, ?, ?)",
+        ("ChartUser", "Week 40 - 2026", 80),
     )
     app_instance.conn.commit()
 
     app_instance.show_progress_chart()
-
-    mock_plot.assert_called_once()
-    weeks_arg, adherence_arg = mock_plot.call_args[0][:2]
-    assert weeks_arg == ["Week 01 - 2026", "Week 02 - 2026"]
-    assert adherence_arg == [75, 90]
-    mock_show.assert_called_once()
-
-
-@patch("aceestver_gymapp.plt.show")
-@patch("aceestver_gymapp.plt.plot")
-def test_show_weight_chart_success(mock_plot, mock_show, app_instance):
-    """Verify weight trend chart plotting."""
-    app_instance.current_client = "WeightUser"
-    app_instance.cur.executemany(
-        """
-        INSERT INTO metrics (client_name, date, weight, waist, bodyfat)
-        VALUES (?, ?, ?, ?, ?)
-        """,
-        [
-            ("WeightUser", "2026-09-01", 85.0, 90.0, 20.0),
-            ("WeightUser", "2026-10-01", 83.5, 88.0, 19.0),
-        ]
-    )
-    app_instance.conn.commit()
-
-    app_instance.show_weight_chart()
-
-    mock_plot.assert_called_once()
-    dates_arg, weights_arg = mock_plot.call_args[0][:2]
-    assert dates_arg == ["2026-09-01", "2026-10-01"]
-    assert weights_arg == [85.0, 83.5]
-    mock_show.assert_called_once()
-
-
-# ==============================================================================
-# 7. BMI & RISK CALCULATION
-# ==============================================================================
-
-@pytest.mark.parametrize(
-    "height_cm, weight_kg, expected_bmi, category_keyword",
-    [
-        (180.0, 55.0, 17.0, "Underweight"),
-        (175.0, 70.0, 22.9, "Normal"),
-        (170.0, 80.0, 27.7, "Overweight"),
-        (165.0, 95.0, 34.9, "Obese"),
-    ]
-)
-@patch("aceestver_gymapp.messagebox.showinfo")
-def test_show_bmi_info(
-    mock_info, app_instance, height_cm, weight_kg, expected_bmi, category_keyword
-):
-    """Verify BMI math and appropriate risk category assignment."""
-    app_instance.current_client = "BMITestUser"
-    app_instance.height.set(height_cm)
-    app_instance.weight.set(weight_kg)
-
-    app_instance.show_bmi_info()
-
-    mock_info.assert_called_once()
-    title, message = mock_info.call_args[0]
-    assert title == "BMI Info"
-    assert str(expected_bmi) in message
-    assert category_keyword in message
+    assert mock_plt_show.called

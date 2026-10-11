@@ -25,7 +25,7 @@ Gym Fitness & Performance is a desktop application built with Python, Tkinter, a
 
    bash
    git clone https://github.com/keerthivasanbits/Gymapp.git
-   cd ACEest_Fitness_app
+   cd Gymapp
    
 
 2. Create and activate a virtual environment (optional but recommended):

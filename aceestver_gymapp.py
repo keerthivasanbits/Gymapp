@@ -134,8 +134,14 @@ class ACEestApp:
     def setup_data(self):
         self.programs = {
             "Fat Loss (FL) – 3 day": {"factor": 22, "desc": "3-day full-body fat loss"},
-            "Fat Loss (FL) – 5 day": {"factor": 24, "desc": "5-day split, higher volume fat loss"},
-            "Muscle Gain (MG) – PPL": {"factor": 35, "desc": "Push/Pull/Legs hypertrophy"},
+            "Fat Loss (FL) – 5 day": {
+                "factor": 24,
+                "desc": "5-day split, higher volume fat loss",
+            },
+            "Muscle Gain (MG) – PPL": {
+                "factor": 35,
+                "desc": "Push/Pull/Legs hypertrophy",
+            },
             "Beginner (BG)": {"factor": 26, "desc": "3-day simple beginner full-body"},
         }
 
@@ -210,16 +216,22 @@ class ACEestApp:
         ).pack()
 
         # Goals
-        tk.Label(left, text="Target Weight (kg)", bg="#1a1a1a", fg="white").pack(pady=(10, 0))
+        tk.Label(left, text="Target Weight (kg)", bg="#1a1a1a", fg="white").pack(
+            pady=(10, 0)
+        )
         self.target_weight = tk.DoubleVar()
         tk.Entry(left, textvariable=self.target_weight, bg="#333", fg="white").pack()
 
-        tk.Label(left, text="Target Adherence %", bg="#1a1a1a", fg="white").pack(pady=(5, 0))
+        tk.Label(left, text="Target Adherence %", bg="#1a1a1a", fg="white").pack(
+            pady=(5, 0)
+        )
         self.target_adherence = tk.IntVar()
         tk.Entry(left, textvariable=self.target_adherence, bg="#333", fg="white").pack()
 
         # Weekly adherence
-        tk.Label(left, text="Weekly Adherence %", bg="#1a1a1a", fg="white").pack(pady=(10, 0))
+        tk.Label(left, text="Weekly Adherence %", bg="#1a1a1a", fg="white").pack(
+            pady=(10, 0)
+        )
         self.adherence = tk.IntVar(value=0)
         ttk.Scale(
             left,
@@ -232,12 +244,18 @@ class ACEestApp:
         # Buttons
         ttk.Button(left, text="Save Client", command=self.save_client).pack(pady=5)
         ttk.Button(left, text="Load Client", command=self.load_client).pack(pady=5)
-        ttk.Button(left, text="Save Weekly Progress", command=self.save_progress).pack(pady=5)
-        ttk.Button(left, text="Log Workout", command=self.open_log_workout_window).pack(pady=5)
-        ttk.Button(left, text="Log Body Metrics", command=self.open_log_metrics_window).pack(pady=5)
-        ttk.Button(left, text="View Workout History", command=self.open_workout_history_window).pack(
+        ttk.Button(left, text="Save Weekly Progress", command=self.save_progress).pack(
             pady=5
         )
+        ttk.Button(left, text="Log Workout", command=self.open_log_workout_window).pack(
+            pady=5
+        )
+        ttk.Button(
+            left, text="Log Body Metrics", command=self.open_log_metrics_window
+        ).pack(pady=5)
+        ttk.Button(
+            left, text="View Workout History", command=self.open_workout_history_window
+        ).pack(pady=5)
 
         # RIGHT PANEL with Notebook
         right = tk.Frame(main, bg="#1a1a1a")
@@ -250,7 +268,9 @@ class ACEestApp:
         summary_frame = tk.Frame(notebook, bg="#1a1a1a")
         notebook.add(summary_frame, text="Client Summary")
 
-        self.summary = tk.Text(summary_frame, bg="#111", fg="white", font=("Consolas", 11))
+        self.summary = tk.Text(
+            summary_frame, bg="#111", fg="white", font=("Consolas", 11)
+        )
         self.summary.pack(fill="both", expand=True, padx=10, pady=10)
 
         # Analytics tab
@@ -313,7 +333,9 @@ class ACEestApp:
         factor = self.programs[self.program.get()]["factor"]
         calories = int(weight * factor) if weight else None
 
-        target_weight = self.target_weight.get() if self.target_weight.get() > 0 else None
+        target_weight = (
+            self.target_weight.get() if self.target_weight.get() > 0 else None
+        )
         target_adherence = (
             self.target_adherence.get() if self.target_adherence.get() > 0 else None
         )
@@ -379,7 +401,9 @@ class ACEestApp:
         self.weight.set(weight if weight is not None else 0.0)
         self.program.set(program if program else "")
         self.target_weight.set(target_weight if target_weight is not None else 0.0)
-        self.target_adherence.set(target_adherence if target_adherence is not None else 0)
+        self.target_adherence.set(
+            target_adherence if target_adherence is not None else 0
+        )
 
         self.client_list.set(name)
         self.refresh_summary()
@@ -542,7 +566,9 @@ class ACEestApp:
         data = self.cur.fetchall()
 
         if not data:
-            messagebox.showinfo("No Data", "No weight metrics available for this client")
+            messagebox.showinfo(
+                "No Data", "No weight metrics available for this client"
+            )
             return
 
         dates = [row[0] for row in data]
@@ -566,7 +592,9 @@ class ACEestApp:
         weight = self.weight.get()
 
         if height <= 0 or weight <= 0:
-            messagebox.showwarning("Missing Data", "Enter valid height and weight first")
+            messagebox.showwarning(
+                "Missing Data", "Enter valid height and weight first"
+            )
             return
 
         h_m = height / 100.0
@@ -610,7 +638,9 @@ class ACEestApp:
         win.configure(bg="#1a1a1a")
         win.geometry("450x500")
 
-        tk.Label(win, text="Date (YYYY-MM-DD)", bg="#1a1a1a", fg="white").pack(pady=(10, 0))
+        tk.Label(win, text="Date (YYYY-MM-DD)", bg="#1a1a1a", fg="white").pack(
+            pady=(10, 0)
+        )
         date_var = tk.StringVar(value=date.today().isoformat())
         tk.Entry(win, textvariable=date_var, bg="#333", fg="white").pack()
 
@@ -623,7 +653,9 @@ class ACEestApp:
             state="readonly",
         ).pack()
 
-        tk.Label(win, text="Duration (min)", bg="#1a1a1a", fg="white").pack(pady=(10, 0))
+        tk.Label(win, text="Duration (min)", bg="#1a1a1a", fg="white").pack(
+            pady=(10, 0)
+        )
         dur_var = tk.IntVar(value=60)
         tk.Entry(win, textvariable=dur_var, bg="#333", fg="white").pack()
 
@@ -699,12 +731,16 @@ class ACEestApp:
         win.configure(bg="#1a1a1a")
         win.geometry("350x300")
 
-        tk.Label(win, text="Date (YYYY-MM-DD)", bg="#1a1a1a", fg="white").pack(pady=(10, 0))
+        tk.Label(win, text="Date (YYYY-MM-DD)", bg="#1a1a1a", fg="white").pack(
+            pady=(10, 0)
+        )
         date_var = tk.StringVar(value=date.today().isoformat())
         tk.Entry(win, textvariable=date_var, bg="#333", fg="white").pack()
 
         tk.Label(win, text="Weight (kg)", bg="#1a1a1a", fg="white").pack(pady=(10, 0))
-        weight_var = tk.DoubleVar(value=self.weight.get() if self.weight.get() > 0 else 0.0)
+        weight_var = tk.DoubleVar(
+            value=self.weight.get() if self.weight.get() > 0 else 0.0
+        )
         tk.Entry(win, textvariable=weight_var, bg="#333", fg="white").pack()
 
         tk.Label(win, text="Waist (cm)", bg="#1a1a1a", fg="white").pack(pady=(10, 0))

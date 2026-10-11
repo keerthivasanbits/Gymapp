@@ -41,6 +41,7 @@ def app_instance(test_db):
 # 1. DATABASE INITIALISATION TESTS
 # ==========================================
 
+
 def test_database_tables_created(app_instance, test_db):
     """Verify all required tables exist upon startup."""
     conn = sqlite3.connect(test_db)
@@ -56,6 +57,7 @@ def test_database_tables_created(app_instance, test_db):
 # ==========================================
 # 2. CLIENT MANAGEMENT TESTS
 # ==========================================
+
 
 @patch("aceestver_gymapp.messagebox.showerror")
 def test_save_client_validation_missing_fields(mock_showerror, app_instance):
@@ -111,6 +113,7 @@ def test_save_and_load_client_success(mock_showinfo, app_instance):
 # 3. PROGRESS LOGGING TESTS
 # ==========================================
 
+
 @patch("aceestver_gymapp.messagebox.showinfo")
 def test_save_progress_success(mock_showinfo, app_instance):
     """Logging weekly adherence progress."""
@@ -136,13 +139,14 @@ def test_save_progress_success(mock_showinfo, app_instance):
 # 4. BMI CALCULATION & RISK CHECKS
 # ==========================================
 
+
 @pytest.mark.parametrize(
     "height, weight, expected_category",
     [
-        (180, 50, "Underweight"),   # BMI ≈ 15.4
-        (180, 70, "Normal"),        # BMI ≈ 21.6
-        (180, 85, "Overweight"),    # BMI ≈ 26.2
-        (180, 110, "Obese"),        # BMI ≈ 34.0
+        (180, 50, "Underweight"),  # BMI ≈ 15.4
+        (180, 70, "Normal"),  # BMI ≈ 21.6
+        (180, 85, "Overweight"),  # BMI ≈ 26.2
+        (180, 110, "Obese"),  # BMI ≈ 34.0
     ],
 )
 @patch("aceestver_gymapp.messagebox.showinfo")
@@ -161,6 +165,7 @@ def test_show_bmi_info(mock_showinfo, app_instance, height, weight, expected_cat
 # ==========================================
 # 5. WORKOUT & METRIC DIALOGUE TESTS
 # ==========================================
+
 
 @patch("aceestver_gymapp.messagebox.showinfo")
 def test_workout_logging_database_entry(mock_showinfo, app_instance):
@@ -195,6 +200,7 @@ def test_workout_logging_database_entry(mock_showinfo, app_instance):
 # ==========================================
 # 6. CHART PLOTTING TESTS (MOCKED)
 # ==========================================
+
 
 @patch("matplotlib.pyplot.show")
 def test_show_progress_chart_calls_plt(mock_plt_show, app_instance):

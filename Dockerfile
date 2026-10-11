@@ -25,7 +25,7 @@ USER appuser
 WORKDIR /home/appuser/app
 
 # Set up virtual environment and update PATH
-ENV PATH="/home/appuser/app/.venv/bin:$PATH"
+ENV PATH="/home/appuser/app/.venv/bin:${PATH}"
 
 # Copy requirements and install dependencies
 COPY --chown=appuser:appuser requirements.txt .

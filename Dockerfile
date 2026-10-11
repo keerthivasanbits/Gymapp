@@ -4,7 +4,7 @@ FROM python:3.10-slim
 ENV PYTHONUNBUFFERED=1 \
     DEBIAN_FRONTEND=noninteractive
 
-# Install Tkinter GUI, build essentials, and Xvfb dependencies
+# Install Tkinter GUI and Xvfb dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-tk \
     tk \
@@ -24,17 +24,18 @@ USER appuser
 
 WORKDIR /home/appuser/app
 
-# Set up virtual environment and update PATH
-ENV PATH="/home/appuser/app/.venv/bin:$PATH"
+# Ensure user-installed binaries (pytest) are on PATH
+ENV PATH="/home/appuser/.local/bin:${PATH}"
 
 # Copy requirements and install dependencies
 COPY --chown=appuser:appuser requirements.txt .
 
-RUN pip install --no-cache-dir --user -r requirements.txt && \
+RUN pip install --no-cache-dir --user --upgrade pip && \
+    pip install --no-cache-dir --user -r requirements.txt && \
     pip install --no-cache-dir --user pytest matplotlib fpdf
 
 # Copy application source code
 COPY --chown=appuser:appuser . .
 
-# Default command to run the application
+# Default command
 CMD ["python", "aceestver_gymapp.py"]

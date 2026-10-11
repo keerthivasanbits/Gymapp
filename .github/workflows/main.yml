@@ -39,6 +39,7 @@ jobs:
         run: docker build -t gym_app:latest .
 
       - name: Run tests inside container with xvfb
+        timeout-minutes: 3
         run: |
           docker run --rm \
             -e PYTHONUNBUFFERED=1 \

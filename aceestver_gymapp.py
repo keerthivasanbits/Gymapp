@@ -1,19 +1,28 @@
-import tkinter as tk
-from tkinter import ttk, messagebox
+import os
 import sqlite3
-from datetime import datetime, date
+import tkinter as tk
+from datetime import date, datetime
+from tkinter import messagebox, ttk
+
+# Ensure matplotlib uses a non-GUI backend when no active desktop display exists
+import matplotlib
+
+if "DISPLAY" not in os.environ:
+    matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-DB_NAME = "aceest_fitness.db"
+DEFAULT_DB_NAME = "aceest_fitness.db"
 
 
 class ACEestApp:
-    def __init__(self, root: tk.Tk):
+
+    def __init__(self, root: tk.Tk, db_path: str = DEFAULT_DB_NAME):
         self.root = root
         self.root.title("ACEest Fitness & Performance")
         self.root.geometry("1300x850")
         self.root.configure(bg="#1a1a1a")
 
+        self.db_path = db_path
         self.conn = None
         self.cur = None
 
@@ -27,18 +36,15 @@ class ACEestApp:
     # ---------- DATABASE ----------
 
     def init_db(self):
-        self.conn = sqlite3.connect(DB_NAME)
+        self.conn = sqlite3.connect(self.db_path)
         self.cur = self.conn.cursor()
 
-        # Ensure clients table has the correct columns.
-        # For a simple desktop app, easiest is to drop and recreate if schema is old.
         self.cur.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='clients'"
         )
         exists = self.cur.fetchone() is not None
 
         if exists:
-            # Check schema
             self.cur.execute("PRAGMA table_info(clients)")
             cols = [row[1] for row in self.cur.fetchall()]
             required = {
@@ -53,10 +59,8 @@ class ACEestApp:
                 "target_adherence",
             }
             if not required.issubset(set(cols)):
-                # Drop and recreate with full schema
                 self.cur.execute("DROP TABLE clients")
 
-        # Create clients with full schema
         self.cur.execute(
             """
             CREATE TABLE IF NOT EXISTS clients (
@@ -73,7 +77,6 @@ class ACEestApp:
             """
         )
 
-        # Weekly adherence
         self.cur.execute(
             """
             CREATE TABLE IF NOT EXISTS progress (
@@ -85,7 +88,6 @@ class ACEestApp:
             """
         )
 
-        # Workouts (session-level)
         self.cur.execute(
             """
             CREATE TABLE IF NOT EXISTS workouts (
@@ -99,7 +101,6 @@ class ACEestApp:
             """
         )
 
-        # Exercises (per workout)
         self.cur.execute(
             """
             CREATE TABLE IF NOT EXISTS exercises (
@@ -113,7 +114,6 @@ class ACEestApp:
             """
         )
 
-        # Body metrics (weight, waist, etc.)
         self.cur.execute(
             """
             CREATE TABLE IF NOT EXISTS metrics (
@@ -133,7 +133,10 @@ class ACEestApp:
 
     def setup_data(self):
         self.programs = {
-            "Fat Loss (FL) – 3 day": {"factor": 22, "desc": "3-day full-body fat loss"},
+            "Fat Loss (FL) – 3 day": {
+                "factor": 22,
+                "desc": "3-day full-body fat loss",
+            },
             "Fat Loss (FL) – 5 day": {
                 "factor": 24,
                 "desc": "5-day split, higher volume fat loss",
@@ -142,13 +145,15 @@ class ACEestApp:
                 "factor": 35,
                 "desc": "Push/Pull/Legs hypertrophy",
             },
-            "Beginner (BG)": {"factor": 26, "desc": "3-day simple beginner full-body"},
+            "Beginner (BG)": {
+                "factor": 26,
+                "desc": "3-day simple beginner full-body",
+            },
         }
 
     # ---------- UI ----------
 
     def setup_ui(self):
-        # Header
         header = tk.Label(
             self.root,
             text="ACEest Functional Fitness System",
@@ -159,7 +164,6 @@ class ACEestApp:
         )
         header.pack(fill="x")
 
-        # Status bar
         self.status_var = tk.StringVar(value="Ready")
         status_bar = tk.Label(
             self.root,
@@ -170,11 +174,9 @@ class ACEestApp:
         )
         status_bar.pack(side="bottom", fill="x")
 
-        # Main area
         main = tk.Frame(self.root, bg="#1a1a1a")
         main.pack(fill="both", expand=True, padx=10, pady=10)
 
-        # LEFT PANEL (client management)
         left = tk.LabelFrame(
             main,
             text=" Client Management ",
@@ -184,7 +186,6 @@ class ACEestApp:
         )
         left.pack(side="left", fill="y", padx=10, pady=5)
 
-        # Client selection
         tk.Label(left, text="Select Client", bg="#1a1a1a", fg="white").pack(pady=(5, 0))
         self.client_list = ttk.Combobox(left, state="readonly")
         self.client_list.pack(pady=(0, 5))
@@ -215,7 +216,6 @@ class ACEestApp:
             state="readonly",
         ).pack()
 
-        # Goals
         tk.Label(left, text="Target Weight (kg)", bg="#1a1a1a", fg="white").pack(
             pady=(10, 0)
         )
@@ -228,7 +228,6 @@ class ACEestApp:
         self.target_adherence = tk.IntVar()
         tk.Entry(left, textvariable=self.target_adherence, bg="#333", fg="white").pack()
 
-        # Weekly adherence
         tk.Label(left, text="Weekly Adherence %", bg="#1a1a1a", fg="white").pack(
             pady=(10, 0)
         )
@@ -241,7 +240,6 @@ class ACEestApp:
             variable=self.adherence,
         ).pack(pady=(0, 5))
 
-        # Buttons
         ttk.Button(left, text="Save Client", command=self.save_client).pack(pady=5)
         ttk.Button(left, text="Load Client", command=self.load_client).pack(pady=5)
         ttk.Button(left, text="Save Weekly Progress", command=self.save_progress).pack(
@@ -254,17 +252,17 @@ class ACEestApp:
             left, text="Log Body Metrics", command=self.open_log_metrics_window
         ).pack(pady=5)
         ttk.Button(
-            left, text="View Workout History", command=self.open_workout_history_window
+            left,
+            text="View Workout History",
+            command=self.open_workout_history_window,
         ).pack(pady=5)
 
-        # RIGHT PANEL with Notebook
         right = tk.Frame(main, bg="#1a1a1a")
         right.pack(side="right", fill="both", expand=True, padx=5, pady=5)
 
         notebook = ttk.Notebook(right)
         notebook.pack(fill="both", expand=True)
 
-        # Summary tab
         summary_frame = tk.Frame(notebook, bg="#1a1a1a")
         notebook.add(summary_frame, text="Client Summary")
 
@@ -273,7 +271,6 @@ class ACEestApp:
         )
         self.summary.pack(fill="both", expand=True, padx=10, pady=10)
 
-        # Analytics tab
         analytics_frame = tk.Frame(notebook, bg="#1a1a1a")
         notebook.add(analytics_frame, text="Progress & Analytics")
 
@@ -539,16 +536,17 @@ class ACEestApp:
         weeks = [row[0] for row in data]
         adherence = [row[1] for row in data]
 
-        plt.figure(figsize=(8, 4))
-        plt.plot(weeks, adherence, marker="o", linewidth=2)
-        plt.title(f"Weekly Adherence – {self.current_client}")
-        plt.xlabel("Week")
-        plt.ylabel("Adherence (%)")
-        plt.ylim(0, 100)
-        plt.grid(True)
+        fig, ax = plt.subplots(figsize=(8, 4))
+        ax.plot(weeks, adherence, marker="o", linewidth=2)
+        ax.set_title(f"Weekly Adherence – {self.current_client}")
+        ax.set_xlabel("Week")
+        ax.set_ylabel("Adherence (%)")
+        ax.set_ylim(0, 100)
+        ax.grid(True)
         plt.xticks(rotation=45)
         plt.tight_layout()
         plt.show()
+        plt.close(fig)
 
     def show_weight_chart(self):
         if not self.ensure_client():
@@ -574,15 +572,16 @@ class ACEestApp:
         dates = [row[0] for row in data]
         weights = [row[1] for row in data]
 
-        plt.figure(figsize=(8, 4))
-        plt.plot(dates, weights, marker="o", linewidth=2, color="orange")
-        plt.title(f"Weight Trend – {self.current_client}")
-        plt.xlabel("Date")
-        plt.ylabel("Weight (kg)")
-        plt.grid(True)
+        fig, ax = plt.subplots(figsize=(8, 4))
+        ax.plot(dates, weights, marker="o", linewidth=2, color="orange")
+        ax.set_title(f"Weight Trend – {self.current_client}")
+        ax.set_xlabel("Date")
+        ax.set_ylabel("Weight (kg)")
+        ax.grid(True)
         plt.xticks(rotation=45)
         plt.tight_layout()
         plt.show()
+        plt.close(fig)
 
     def show_bmi_info(self):
         if not self.ensure_client():
@@ -612,11 +611,12 @@ class ACEestApp:
             risk = "Moderate risk; focus on adherence and progressive activity."
         else:
             category = "Obese"
-            risk = "Higher risk; prioritize fat loss, consistency, and supervision."
+            risk = "Higher risk; prioritize fat loss, consistency, and" " supervision."
 
         messagebox.showinfo(
             "BMI Info",
-            f"BMI for {self.current_client}: {bmi} ({category})\n\nRisk note: {risk}",
+            f"BMI for {self.current_client}: {bmi} ({category})\n\nRisk note:"
+            f" {risk}",
         )
 
     # ---------- WORKOUT LOGGING ----------
@@ -649,7 +649,13 @@ class ACEestApp:
         ttk.Combobox(
             win,
             textvariable=type_var,
-            values=["Strength", "Hypertrophy", "Conditioning", "Mixed", "Mobility"],
+            values=[
+                "Strength",
+                "Hypertrophy",
+                "Conditioning",
+                "Mixed",
+                "Mobility",
+            ],
             state="readonly",
         ).pack()
 

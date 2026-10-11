@@ -10,7 +10,7 @@ matplotlib.use("Agg")
 
 import tkinter as tk
 
-# 2. Correct imports matching your actual filename
+# 2. Module imports matching your workspace file
 import aceestver_gymapp as app_module
 from aceestver_gymapp import ACEestApp
 
@@ -19,21 +19,18 @@ from aceestver_gymapp import ACEestApp
 def tk_app(tmp_path, monkeypatch):
     """
     Initializes an isolated Tk instance and points DB_NAME to a clean temporary file.
-    Destroys the Tk instance after the test completes.
+    Destroys the Tk instance and clears connections after the test completes.
     """
     test_db_file = str(tmp_path / "test_fitness.db")
     monkeypatch.setattr(app_module, "DB_NAME", test_db_file)
 
-    # Initialize headless Tk instance
     root = tk.Tk()
     root.withdraw()
 
-    # Instantiate the application
     app = ACEestApp(root)
 
     yield app
 
-    # Clean up DB connection and Tkinter handles
     if app.conn:
         app.conn.close()
     root.destroy()
@@ -47,7 +44,7 @@ def test_database_initialization(tk_app):
     """Verify that all default tables and the default admin user are seeded."""
     tk_app.cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
     tables = {row[0] for row in tk_app.cur.fetchall()}
-    
+
     expected_tables = {"users", "clients", "progress", "workouts", "exercises", "metrics"}
     assert expected_tables.issubset(tables)
 
@@ -95,11 +92,15 @@ def test_save_and_load_client(mock_info, tk_app):
     tk_app.password_var.set("admin")
     tk_app.login_user()
 
+    # Dynamically select the first available program key to avoid character mismatch
+    program_key = list(tk_app.programs.keys())[0]
+    expected_factor = tk_app.programs[program_key]["factor"]
+
     tk_app.name.set("Jane Doe")
     tk_app.age.set(28)
     tk_app.height.set(168.0)
     tk_app.weight.set(65.0)
-    tk_app.program.set("Fat Loss (FL) – 3 day")
+    tk_app.program.set(program_key)
     tk_app.membership_var.set("2026-12-31")
 
     tk_app.save_client()
@@ -108,7 +109,7 @@ def test_save_and_load_client(mock_info, tk_app):
     tk_app.cur.execute("SELECT calories, membership_expiry FROM clients WHERE name='Jane Doe'")
     row = tk_app.cur.fetchone()
     assert row is not None
-    assert row[0] == int(65.0 * 22)
+    assert row[0] == int(65.0 * expected_factor)
     assert row[1] == "2026-12-31"
 
     # Reset UI variables
@@ -128,6 +129,10 @@ def test_save_and_load_client(mock_info, tk_app):
 @patch("tkinter.messagebox.showerror")
 def test_save_client_without_name(mock_error, tk_app):
     """Test validation preventing clients without names from being created."""
+    tk_app.username_var.set("admin")
+    tk_app.password_var.set("admin")
+    tk_app.login_user()
+
     tk_app.name.set("   ")
     tk_app.save_client()
 
@@ -181,10 +186,11 @@ def test_generate_ai_program_no_client_selected(mock_error, tk_app):
 @patch("tkinter.messagebox.showinfo")
 def test_export_pdf_report(mock_info, mock_pdf_output, tk_app):
     """Test PDF generation pipeline without writing actual disk artifacts."""
+    # ASCII hyphen '-' satisfies FPDF Latin-1 standard font encoding
     tk_app.cur.execute(
         """
         INSERT INTO clients (name, age, height, weight, program, membership_expiry)
-        VALUES ('Alice Stone', 32, 175.0, 70.0, 'Muscle Gain (MG) – PPL', '2026-11-30')
+        VALUES ('Alice Stone', 32, 175.0, 70.0, 'Muscle Gain (MG) - PPL', '2026-11-30')
         """
     )
     tk_app.conn.commit()

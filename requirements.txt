@@ -1,4 +1,3 @@
 pytest
 matplotlib
-xvfb
-fpdf
+fpdf2

@@ -1,204 +1,186 @@
 import os
 import sqlite3
 import pytest
-from unittest.mock import patch, MagicMock
-
-# 1. Force headless Matplotlib before importing UI components
-os.environ["MPLBACKEND"] = "Agg"
-import matplotlib
-matplotlib.use("Agg")
-
+from unittest.mock import patch
 import tkinter as tk
 
-# 2. Module imports matching your workspace file
+# Assuming the application file is named `aceestver_gymapp.py`
 import aceestver_gymapp as app_module
-from aceestver_gymapp import ACEestApp
 
+TEST_DB = "test_aceest_fitness.db"
+
+@pytest.fixture(autouse=True)
+def setup_test_db(monkeypatch):
+    """Isolate database execution to a temporary test DB."""
+    monkeypatch.setattr(app_module, "DB_NAME", TEST_DB)
+    if os.path.exists(TEST_DB):
+        os.remove(TEST_DB)
+        
+    app_module.init_db()
+    yield
+    
+    if os.path.exists(TEST_DB):
+        os.remove(TEST_DB)
 
 @pytest.fixture
-def tk_app(tmp_path, monkeypatch):
-    """
-    Initializes an isolated Tk instance and points DB_NAME to a clean temporary file.
-    Destroys the Tk instance and clears connections after the test completes.
-    """
-    test_db_file = str(tmp_path / "test_fitness.db")
-    monkeypatch.setattr(app_module, "DB_NAME", test_db_file)
-
+def tk_root():
+    """Initializes and tears down a Tk root instance."""
     root = tk.Tk()
-    root.withdraw()
-
-    app = ACEestApp(root)
-
-    yield app
-
-    if app.conn:
-        app.conn.close()
+    root.withdraw()  # Hide the test window
+    yield root
     root.destroy()
 
+# ==================== DATABASE TESTS ====================
 
-# =====================================================================
-# Database & Authentication Tests
-# =====================================================================
+def test_init_db_creates_default_admin():
+    conn = sqlite3.connect(TEST_DB)
+    cur = conn.cursor()
+    cur.execute("SELECT username, password, role FROM users WHERE username='admin'")
+    row = cur.fetchone()
+    conn.close()
 
-def test_database_initialization(tk_app):
-    """Verify that all default tables and the default admin user are seeded."""
-    tk_app.cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
-    tables = {row[0] for row in tk_app.cur.fetchall()}
+    assert row is not None
+    assert row[0] == "admin"
+    assert row[1] == "admin"
+    assert row[2] == "Admin"
+
+def test_init_db_schema_tables():
+    conn = sqlite3.connect(TEST_DB)
+    cur = conn.cursor()
+    cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    tables = {r[0] for r in cur.fetchall()}
+    conn.close()
 
     expected_tables = {"users", "clients", "progress", "workouts", "exercises", "metrics"}
     assert expected_tables.issubset(tables)
 
-    tk_app.cur.execute("SELECT username, role FROM users WHERE username='admin'")
-    admin = tk_app.cur.fetchone()
-    assert admin is not None
-    assert admin[0] == "admin"
-    assert admin[1] == "Admin"
+# ==================== AUTHENTICATION TESTS ====================
 
+def test_login_success(tk_root):
+    app = app_module.ACEestApp(tk_root)
+    app.username_var.set("admin")
+    app.password_var.set("admin")
 
-def test_login_successful(tk_app):
-    """Test login flow with valid credentials."""
-    tk_app.username_var.set("admin")
-    tk_app.password_var.set("admin")
+    with patch.object(app, "dashboard") as mock_dashboard:
+        app.login()
+        assert app.current_user == "admin"
+        assert app.current_role == "Admin"
+        mock_dashboard.assert_called_once()
+    app.conn.close()
 
-    with patch.object(tk_app, "setup_ui") as mock_setup_ui:
-        tk_app.login_user()
-        assert tk_app.user_role == "Admin"
-        assert tk_app.current_user == "admin"
-        mock_setup_ui.assert_called_once()
+@patch("aceestver_gymapp.messagebox.showerror")
+def test_login_failure_invalid_credentials(mock_error, tk_root):
+    app = app_module.ACEestApp(tk_root)
+    app.username_var.set("admin")
+    app.password_var.set("wrong_pass")
 
+    app.login()
+    assert app.current_user is None
+    assert app.current_role is None
+    mock_error.assert_called_once_with("Login Failed", "Invalid credentials")
+    app.conn.close()
 
-@patch("tkinter.messagebox.showerror")
-def test_login_failed(mock_error, tk_app):
-    """Test login rejection on incorrect credentials."""
-    tk_app.username_var.set("wrong_user")
-    tk_app.password_var.set("wrong_pass")
+# ==================== CLIENT MANAGEMENT TESTS ====================
 
-    tk_app.login_user()
+@patch("aceestver_gymapp.simpledialog.askstring", return_value="John Doe")
+@patch("aceestver_gymapp.messagebox.showinfo")
+def test_add_save_client(mock_info, mock_dialog, tk_root):
+    app = app_module.ACEestApp(tk_root)
+    app.dashboard()
+    app.add_save_client()
 
-    assert tk_app.user_role is None
-    mock_error.assert_called_once_with(
-        "Login Failed", "Invalid credentials\nTry admin / admin"
-    )
-
-
-# =====================================================================
-# Client Management Tests
-# =====================================================================
-
-@patch("tkinter.messagebox.showinfo")
-def test_save_and_load_client(mock_info, tk_app):
-    """Test saving a new client to the database and reading the values back."""
-    tk_app.username_var.set("admin")
-    tk_app.password_var.set("admin")
-    tk_app.login_user()
-
-    # Dynamically select the first available program key to avoid character mismatch
-    program_key = list(tk_app.programs.keys())[0]
-    expected_factor = tk_app.programs[program_key]["factor"]
-
-    tk_app.name.set("Jane Doe")
-    tk_app.age.set(28)
-    tk_app.height.set(168.0)
-    tk_app.weight.set(65.0)
-    tk_app.program.set(program_key)
-    tk_app.membership_var.set("2026-12-31")
-
-    tk_app.save_client()
-    mock_info.assert_called_with("Saved", "Client data saved")
-
-    tk_app.cur.execute("SELECT calories, membership_expiry FROM clients WHERE name='Jane Doe'")
-    row = tk_app.cur.fetchone()
+    app.cur.execute("SELECT name, membership_status FROM clients WHERE name='John Doe'")
+    row = app.cur.fetchone()
     assert row is not None
-    assert row[0] == int(65.0 * expected_factor)
-    assert row[1] == "2026-12-31"
+    assert row[0] == "John Doe"
+    assert row[1] == "Active"
+    mock_info.assert_called_once()
+    app.conn.close()
 
-    # Reset UI variables
-    tk_app.name.set("")
-    tk_app.age.set(0)
-    tk_app.weight.set(0.0)
+@patch("aceestver_gymapp.simpledialog.askstring", return_value=None)
+def test_add_save_client_cancelled(mock_dialog, tk_root):
+    app = app_module.ACEestApp(tk_root)
+    app.dashboard()
+    app.add_save_client()
 
-    # Load client back
-    tk_app.current_client = "Jane Doe"
-    tk_app.load_client()
+    app.cur.execute("SELECT COUNT(*) FROM clients")
+    count = app.cur.fetchone()[0]
+    assert count == 0
+    app.conn.close()
 
-    assert tk_app.name.get() == "Jane Doe"
-    assert tk_app.age.get() == 28
-    assert tk_app.weight.get() == 65.0
+# ==================== WORKOUTS & PROGRAM TESTS ====================
 
+@patch("aceestver_gymapp.messagebox.showwarning")
+def test_generate_program_no_client_selected(mock_warn, tk_root):
+    app = app_module.ACEestApp(tk_root)
+    app.dashboard()
+    app.current_client = None
 
-@patch("tkinter.messagebox.showerror")
-def test_save_client_without_name(mock_error, tk_app):
-    """Test validation preventing clients without names from being created."""
-    tk_app.username_var.set("admin")
-    tk_app.password_var.set("admin")
-    tk_app.login_user()
+    app.generate_program()
+    mock_warn.assert_called_once_with("No Client", "Select a client first")
+    app.conn.close()
 
-    tk_app.name.set("   ")
-    tk_app.save_client()
+@patch("aceestver_gymapp.messagebox.showinfo")
+def test_generate_program_success(mock_info, tk_root):
+    app = app_module.ACEestApp(tk_root)
+    app.dashboard()
 
-    mock_error.assert_called_once_with("Error", "Name required")
+    # Seed client
+    app.cur.execute("INSERT INTO clients (name, membership_status) VALUES ('Jane Doe', 'Active')")
+    app.conn.commit()
+    app.current_client = "Jane Doe"
 
+    app.generate_program()
+    app.cur.execute("SELECT program FROM clients WHERE name='Jane Doe'")
+    program = app.cur.fetchone()[0]
 
-# =====================================================================
-# Program Generation Tests
-# =====================================================================
+    assert program is not None
+    mock_info.assert_called_once()
+    app.conn.close()
 
-@patch("tkinter.simpledialog.askstring", return_value="beginner")
-@patch("tkinter.messagebox.showinfo")
-def test_generate_ai_program_beginner(mock_info, mock_dialog, tk_app):
-    """Test AI program generator populates TreeView rows properly for beginner."""
-    tk_app.username_var.set("admin")
-    tk_app.password_var.set("admin")
-    tk_app.login_user()
+def test_add_workout_record(tk_root):
+    app = app_module.ACEestApp(tk_root)
+    app.dashboard()
+    app.current_client = "Test Athlete"
 
-    tk_app.cur.execute(
-        "INSERT INTO clients (name, program) VALUES (?, ?)",
-        ("Bob Smith", "Beginner (BG)")
+    # Direct database insertion verification for workout logic
+    app.cur.execute(
+        "INSERT INTO workouts (client_name, date, workout_type, duration_min, notes) VALUES (?, ?, ?, ?, ?)",
+        (app.current_client, "2026-10-12", "Strength", 45, "Leg day focus")
     )
-    tk_app.conn.commit()
-    tk_app.current_client = "Bob Smith"
+    app.conn.commit()
 
-    tk_app.generate_ai_program()
+    app.refresh_workouts()
+    rows = app.tree_workouts.get_children()
+    assert len(rows) == 1
+    values = app.tree_workouts.item(rows[0])["values"]
+    assert values == ["2026-10-12", "Strength", 45, "Leg day focus"]
+    app.conn.close()
 
-    items = tk_app.program_tree.get_children()
-    assert len(items) == 9
+# ==================== REPORTING TESTS ====================
 
-    row_values = tk_app.program_tree.item(items[0], "values")
-    assert len(row_values) == 4
-    assert row_values[0] == "Monday"
-    assert int(row_values[2]) in [2, 3]
-    assert int(row_values[3]) in range(8, 13)
+@patch("aceestver_gymapp.messagebox.showinfo")
+def test_generate_pdf_success(mock_info, tk_root):
+    app = app_module.ACEestApp(tk_root)
+    app.dashboard()
 
+    # Seed client with required full schema columns
+    app.cur.execute("""
+        INSERT INTO clients (name, age, height, weight, program, calories, target_weight, target_adherence, membership_status, membership_end)
+        VALUES ('PDF User', 28, 175.0, 70.0, 'Fat Loss', 2200, 68.0, 90, 'Active', '2026-12-31')
+    """)
+    app.conn.commit()
+    app.current_client = "PDF User"
 
-@patch("tkinter.messagebox.showerror")
-def test_generate_ai_program_no_client_selected(mock_error, tk_app):
-    """Ensure error is raised if user triggers generation without selecting client."""
-    tk_app.current_client = None
-    tk_app.generate_ai_program()
-    mock_error.assert_called_once_with("Error", "Select client first")
+    pdf_file = "PDF User_report.pdf"
+    if os.path.exists(pdf_file):
+        os.remove(pdf_file)
 
+    app.generate_pdf()
 
-# =====================================================================
-# PDF Export Tests
-# =====================================================================
+    assert os.path.exists(pdf_file)
+    assert os.path.getsize(pdf_file) > 0
 
-@patch("fpdf.FPDF.output")
-@patch("tkinter.messagebox.showinfo")
-def test_export_pdf_report(mock_info, mock_pdf_output, tk_app):
-    """Test PDF generation pipeline without writing actual disk artifacts."""
-    # ASCII hyphen '-' satisfies FPDF Latin-1 standard font encoding
-    tk_app.cur.execute(
-        """
-        INSERT INTO clients (name, age, height, weight, program, membership_expiry)
-        VALUES ('Alice Stone', 32, 175.0, 70.0, 'Muscle Gain (MG) - PPL', '2026-11-30')
-        """
-    )
-    tk_app.conn.commit()
-    tk_app.current_client = "Alice Stone"
-
-    tk_app.export_pdf_report()
-
-    mock_pdf_output.assert_called_once_with("Alice Stone_report.pdf")
-    mock_info.assert_called_once_with(
-        "PDF Exported", "Report saved as Alice Stone_report.pdf"
-    )
+    # Cleanup generated test artifact
+    os.remove(pdf_file)
+    app.conn.close()

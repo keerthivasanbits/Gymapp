@@ -1,34 +1,37 @@
 pipeline {
     agent any
-    triggers {
-        githubPush()
+    triggers{
+      githubPush()
     }
 
-    stages {
-        stage('Checkout') {
-            steps {
+    stages{
+        stage('Checkout'){
+            steps{
                 echo 'Checking out main branch'
                 checkout scm
             }
         }
 
-        stage('Build') {
-            steps {
-                echo 'Installing python dependencies'
+        stage('Build'){
+            steps{
+                echo 'installing python dependencies'
+
                 sh '''
-                    python3 -m venv .venv
-                    .venv/bin/pip install --upgrade pip
-                    .venv/bin/pip install -r requirements.txt
+                     python3 -m venv .venv
+                     .venv/bin/pip install -r requirements.txt
                 '''
             }
         }
 
-        stage('Test') {
-            steps {
-                echo 'Running Automated Test with Virtual Display'
+        stage('Test'){
+            steps{
+                echo 'Running Automated Test'
+
                 sh '''
-                    # -a automatically finds an available display number and cleans up on exit
-                    xvfb-run -a .venv/bin/pytest aceestver_test_1.py
+                      python3 -m venv .venv
+                      .venv/bin/pip install --no-cache-dir -r requirements.txt
+                      .venv/bin/pip install pytest pytest-xvfb matplotlib
+                      .venv/bin/pytest tests/
                 '''
             }
         }

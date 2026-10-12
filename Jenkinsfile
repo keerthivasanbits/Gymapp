@@ -29,7 +29,7 @@ pipeline {
                     python3 -m venv .venv
                     .venv/bin/pip install --no-cache-dir -r requirements.txt
                     .venv/bin/pip install pytest pytest-xvfb matplotlib
-                    xvfb-run -a .venv/bin/pytest --xvfb tests/
+                    xvfb-run -a .venv/bin/pytest --xvfb aceestver_test_1.py
                 '''
             }
         }

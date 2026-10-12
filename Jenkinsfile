@@ -23,7 +23,7 @@ pipeline {
             }
         }
 
-        stage('Test'){
+      stage('Test'){
             steps{
                 echo 'Running Automated Test'
 
@@ -31,8 +31,8 @@ pipeline {
                       .venv/bin/pip install --no-cache-dir -r requirements.txt
                       .venv/bin/pip install pytest pytest-xvfb matplotlib
                       
-                      # Run pytest inside a virtual frame buffer using xvfb-run
-                      xvfb-run --auto-servernum .venv/bin/pytest aceestver_test_1.py
+                      # pytest-xvfb will automatically detect and use the virtual display
+                      .venv/bin/pytest aceestver_test_1.py
                 '''
             }
         }

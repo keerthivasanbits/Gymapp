@@ -1,37 +1,46 @@
 pipeline {
     agent any
-    triggers {
-        githubPush()
+
+    environment {
+        DISPLAY = ':99'
+        PYTHONUNBUFFERED = '1'
     }
 
     stages {
         stage('Checkout') {
             steps {
-                echo 'Checking out main branch'
-                checkout scm
+                checkout scms
             }
         }
 
-        stage('Build') {
+        stage('Install Dependencies') {
             steps {
-                echo 'Installing Python dependencies'
                 sh '''
                     python3 -m venv .venv
-                    .venv/bin/pip install --no-cache-dir -r requirements.txt
+                    . .venv/bin/activate
+                    pip install --upgrade pip
+                    if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+                    pip install pytest pytest-cov
                 '''
             }
         }
 
-        stage('Test') {
+        stage('Test Execution') {
             steps {
-                echo 'Running Automated Tests with xvfb'
                 sh '''
-                    python3 -m venv .venv
-                    .venv/bin/pip install --no-cache-dir -r requirements.txt
-                    .venv/bin/pip install pytest pytest-xvfb matplotlib
-                    xvfb-run -a .venv/bin/pytest --xvfb aceestver_test_1.py
+                    . .venv/bin/activate
+                    xvfb-run -a -s "-screen 0 1024x768x24" pytest aceestver_test_1.py -v --junitxml=test-results.xml
                 '''
             }
+        }
+    }
+
+    post {
+        always {
+            junit allowEmptyResults: true, testResults: 'test-results.xml'
+        }
+        cleanup {
+            sh 'rm -rf .venv test_fitness.db'
         }
     }
 }

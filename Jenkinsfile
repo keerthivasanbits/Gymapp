@@ -31,7 +31,13 @@ pipeline {
                       .venv/bin/pip install --no-cache-dir -r requirements.txt
                       .venv/bin/pip install pytest pytest-xvfb matplotlib
                       
-                      # pytest-xvfb will automatically detect and use the virtual display
+                      # Start Xvfb manually in the background on display :99
+                      Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &
+                      
+                      # Export the DISPLAY variable so tkinter can find it
+                      export DISPLAY=:99
+                      
+                      # Run your pytest command
                       .venv/bin/pytest aceestver_test_1.py
                 '''
             }

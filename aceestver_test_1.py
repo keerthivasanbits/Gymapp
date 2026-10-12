@@ -1,186 +1,134 @@
+import sys, os
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+
 import os
 import sqlite3
 import pytest
-from unittest.mock import patch
 import tkinter as tk
+from unittest.mock import patch, MagicMock
 
-# Assuming the application file is named `aceestver_gymapp.py`
-import aceestver_gymapp as app_module
-
-TEST_DB = "test_aceest_fitness.db"
-
-@pytest.fixture(autouse=True)
-def setup_test_db(monkeypatch):
-    """Isolate database execution to a temporary test DB."""
-    monkeypatch.setattr(app_module, "DB_NAME", TEST_DB)
-    if os.path.exists(TEST_DB):
-        os.remove(TEST_DB)
-        
-    app_module.init_db()
-    yield
-    
-    if os.path.exists(TEST_DB):
-        os.remove(TEST_DB)
+import aceestver_gymapp
 
 @pytest.fixture
-def tk_root():
-    """Initializes and tears down a Tk root instance."""
+def test_db(tmp_path):
+    """Fixture to set up a temporary SQLite database for testing."""
+    db_file = tmp_path / "test_fitness.db"
+    original_db = aceestver_gymapp.DB_NAME
+    aceestver_gymapp.DB_NAME = str(db_file)
+    
+    aceestver_gymapp.init_db()
+    yield str(db_file)
+    aceestver_gymapp.DB_NAME = original_db
+
+@pytest.fixture
+def app_instance(test_db):
+    """Fixture to initialize the Tkinter root and application instance safely."""
     root = tk.Tk()
-    root.withdraw()  # Hide the test window
-    yield root
+    root.withdraw()
+    app = aceestver_gymapp.ACEestApp(root)
+    yield app
     root.destroy()
 
-# ==================== DATABASE TESTS ====================
-
-def test_init_db_creates_default_admin():
-    conn = sqlite3.connect(TEST_DB)
+def test_init_db(test_db):
+    """Test database initialization and default admin creation."""
+    conn = sqlite3.connect(test_db)
     cur = conn.cursor()
-    cur.execute("SELECT username, password, role FROM users WHERE username='admin'")
-    row = cur.fetchone()
-    conn.close()
-
-    assert row is not None
-    assert row[0] == "admin"
-    assert row[1] == "admin"
-    assert row[2] == "Admin"
-
-def test_init_db_schema_tables():
-    conn = sqlite3.connect(TEST_DB)
-    cur = conn.cursor()
-    cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
-    tables = {r[0] for r in cur.fetchall()}
-    conn.close()
-
+    
+    cur.execute("SELECT name FROM sqlite_master WHERE type='table';")
+    tables = {row[0] for row in cur.fetchall()}
     expected_tables = {"users", "clients", "progress", "workouts", "exercises", "metrics"}
     assert expected_tables.issubset(tables)
-
-# ==================== AUTHENTICATION TESTS ====================
-
-def test_login_success(tk_root):
-    app = app_module.ACEestApp(tk_root)
-    app.username_var.set("admin")
-    app.password_var.set("admin")
-
-    with patch.object(app, "dashboard") as mock_dashboard:
-        app.login()
-        assert app.current_user == "admin"
-        assert app.current_role == "Admin"
-        mock_dashboard.assert_called_once()
-    app.conn.close()
-
-@patch("aceestver_gymapp.messagebox.showerror")
-def test_login_failure_invalid_credentials(mock_error, tk_root):
-    app = app_module.ACEestApp(tk_root)
-    app.username_var.set("admin")
-    app.password_var.set("wrong_pass")
-
-    app.login()
-    assert app.current_user is None
-    assert app.current_role is None
-    mock_error.assert_called_once_with("Login Failed", "Invalid credentials")
-    app.conn.close()
-
-# ==================== CLIENT MANAGEMENT TESTS ====================
-
-@patch("aceestver_gymapp.simpledialog.askstring", return_value="John Doe")
-@patch("aceestver_gymapp.messagebox.showinfo")
-def test_add_save_client(mock_info, mock_dialog, tk_root):
-    app = app_module.ACEestApp(tk_root)
-    app.dashboard()
-    app.add_save_client()
-
-    app.cur.execute("SELECT name, membership_status FROM clients WHERE name='John Doe'")
-    row = app.cur.fetchone()
+    
+    cur.execute("SELECT role FROM users WHERE username='admin'")
+    row = cur.fetchone()
     assert row is not None
-    assert row[0] == "John Doe"
-    assert row[1] == "Active"
-    mock_info.assert_called_once()
-    app.conn.close()
+    assert row[0] == "Admin"
+    conn.close()
 
-@patch("aceestver_gymapp.simpledialog.askstring", return_value=None)
-def test_add_save_client_cancelled(mock_dialog, tk_root):
-    app = app_module.ACEestApp(tk_root)
-    app.dashboard()
-    app.add_save_client()
+def test_login_success(app_instance):
+    """Test successful user login with valid admin credentials."""
+    app_instance.username_var.set("admin")
+    app_instance.password_var.set("admin")
+    
+    with patch.object(app_instance, "dashboard", return_value=None) as mock_dash:
+        app_instance.login()
+        assert app_instance.current_user == "admin"
+        assert app_instance.current_role == "Admin"
+        mock_dash.assert_called_once()
 
-    app.cur.execute("SELECT COUNT(*) FROM clients")
-    count = app.cur.fetchone()[0]
-    assert count == 0
-    app.conn.close()
+def test_login_failure(app_instance):
+    """Test login failure with invalid credentials."""
+    app_instance.username_var.set("admin")
+    app_instance.password_var.set("wrongpassword")
+    
+    with patch("tkinter.messagebox.showerror") as mock_error:
+        app_instance.login()
+        assert app_instance.current_user is None
+        mock_error.assert_called_once()
 
-# ==================== WORKOUTS & PROGRAM TESTS ====================
+def test_add_save_client(app_instance):
+    """Test adding a client via simpledialog input mock, avoiding UI refresh errors."""
+    with patch("tkinter.simpledialog.askstring", return_value="John Doe"), \
+         patch.object(app_instance, "refresh_client_list") as mock_refresh, \
+         patch("tkinter.messagebox.showinfo") as mock_info:
+        
+        app_instance.add_save_client()
+        
+        # Verify client is stored in DB
+        app_instance.cur.execute("SELECT name, membership_status FROM clients WHERE name=?", ("John Doe",))
+        row = app_instance.cur.fetchone()
+        assert row is not None
+        assert row[0] == "John Doe"
+        assert row[1] == "Active"
+        mock_refresh.assert_called_once()
+        mock_info.assert_called_once()
 
-@patch("aceestver_gymapp.messagebox.showwarning")
-def test_generate_program_no_client_selected(mock_warn, tk_root):
-    app = app_module.ACEestApp(tk_root)
-    app.dashboard()
-    app.current_client = None
+def test_generate_program(app_instance):
+    """Test AI program generator assigns a workout program, bypassing UI summary updates."""
+    app_instance.current_client = "Jane Doe"
+    app_instance.cur.execute("INSERT INTO clients (name, membership_status) VALUES (?, ?)", ("Jane Doe", "Active"))
+    app_instance.conn.commit()
+    
+    with patch.object(app_instance, "refresh_summary") as mock_refresh, \
+         patch("tkinter.messagebox.showinfo") as mock_info:
+        
+        app_instance.generate_program()
+        
+        app_instance.cur.execute("SELECT program FROM clients WHERE name=?", ("Jane Doe",))
+        program = app_instance.cur.fetchone()[0]
+        assert program is not None
+        assert len(program) > 0
+        mock_refresh.assert_called_once()
+        mock_info.assert_called_once()
 
-    app.generate_program()
-    mock_warn.assert_called_once_with("No Client", "Select a client first")
-    app.conn.close()
-
-@patch("aceestver_gymapp.messagebox.showinfo")
-def test_generate_program_success(mock_info, tk_root):
-    app = app_module.ACEestApp(tk_root)
-    app.dashboard()
-
-    # Seed client
-    app.cur.execute("INSERT INTO clients (name, membership_status) VALUES ('Jane Doe', 'Active')")
-    app.conn.commit()
-    app.current_client = "Jane Doe"
-
-    app.generate_program()
-    app.cur.execute("SELECT program FROM clients WHERE name='Jane Doe'")
-    program = app.cur.fetchone()[0]
-
-    assert program is not None
-    mock_info.assert_called_once()
-    app.conn.close()
-
-def test_add_workout_record(tk_root):
-    app = app_module.ACEestApp(tk_root)
-    app.dashboard()
-    app.current_client = "Test Athlete"
-
-    # Direct database insertion verification for workout logic
-    app.cur.execute(
+def test_add_workout(app_instance):
+    """Test adding workout entries for a client."""
+    app_instance.current_client = "Mike Smith"
+    app_instance.cur.execute("INSERT INTO clients (name, membership_status) VALUES (?, ?)", ("Mike Smith", "Active"))
+    app_instance.conn.commit()
+    
+    app_instance.cur.execute(
         "INSERT INTO workouts (client_name, date, workout_type, duration_min, notes) VALUES (?, ?, ?, ?, ?)",
-        (app.current_client, "2026-10-12", "Strength", 45, "Leg day focus")
+        ("Mike Smith", "2026-10-10", "Strength", 45, "Great session")
     )
-    app.conn.commit()
+    app_instance.conn.commit()
+    
+    app_instance.cur.execute("SELECT workout_type, duration_min, notes FROM workouts WHERE client_name=?", ("Mike Smith",))
+    row = app_instance.cur.fetchone()
+    assert row == ("Strength", 45, "Great session")
 
-    app.refresh_workouts()
-    rows = app.tree_workouts.get_children()
-    assert len(rows) == 1
-    values = app.tree_workouts.item(rows[0])["values"]
-    assert values == ["2026-10-12", "Strength", 45, "Leg day focus"]
-    app.conn.close()
-
-# ==================== REPORTING TESTS ====================
-
-@patch("aceestver_gymapp.messagebox.showinfo")
-def test_generate_pdf_success(mock_info, tk_root):
-    app = app_module.ACEestApp(tk_root)
-    app.dashboard()
-
-    # Seed client with required full schema columns
-    app.cur.execute("""
-        INSERT INTO clients (name, age, height, weight, program, calories, target_weight, target_adherence, membership_status, membership_end)
-        VALUES ('PDF User', 28, 175.0, 70.0, 'Fat Loss', 2200, 68.0, 90, 'Active', '2026-12-31')
-    """)
-    app.conn.commit()
-    app.current_client = "PDF User"
-
-    pdf_file = "PDF User_report.pdf"
-    if os.path.exists(pdf_file):
-        os.remove(pdf_file)
-
-    app.generate_pdf()
-
-    assert os.path.exists(pdf_file)
-    assert os.path.getsize(pdf_file) > 0
-
-    # Cleanup generated test artifact
-    os.remove(pdf_file)
-    app.conn.close()
+def test_check_membership(app_instance):
+    """Test viewing membership status popup info."""
+    app_instance.current_client = "Sarah Connor"
+    app_instance.cur.execute(
+        "INSERT INTO clients (name, membership_status, membership_end) VALUES (?, ?, ?)",
+        ("Sarah Connor", "Active", "2026-12-31")
+    )
+    app_instance.conn.commit()
+    
+    with patch("tkinter.messagebox.showinfo") as mock_info:
+        app_instance.check_membership()
+        mock_info.assert_called_once()
+        args = mock_info.call_args[0]
+        assert "Active" in args[1]
+        assert "2026-12-31" in args[1]

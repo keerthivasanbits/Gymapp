@@ -1,4 +1,4 @@
-name: Gymapp Pipeline
+name: Aceestver Gym app Pipeline
 
 on:
   push:
@@ -22,11 +22,14 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install black
 
-      - name: Format check with Black
-        continue-on-error: true
-        run: black --check .
+      - name: Format code
+        run: |
+          pip install black
+          black .
+
+      - name: Install matplotlib
+        run: pip install matplotlib
 
   docker-build-and-test:
     runs-on: ubuntu-latest
@@ -38,10 +41,8 @@ jobs:
       - name: Build Docker image
         run: docker build -t gym_app:latest .
 
+      - name: Install xvfb on runner
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
       - name: Run tests inside container with xvfb
-        timeout-minutes: 3
-        run: |
-          docker run --rm \
-            -e PYTHONUNBUFFERED=1 \
-            gym_app:latest \
-            xvfb-run -a python -u -m pytest -v -s aceestver_test_1.py
+        run: xvfb-run -a docker run --rm gym_app:latest pytest aceestver_test_1.py

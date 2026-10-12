@@ -1,14 +1,9 @@
 FROM python:3.10-slim
 
-# Prevent Python from buffering stdout/stderr
-ENV PYTHONUNBUFFERED=1 \
-    DEBIAN_FRONTEND=noninteractive
-
-# Install Tkinter GUI and Xvfb dependencies
+# Install Tkinter + xvfb in one step
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-tk \
     tk \
-    tk-dev \
     libx11-6 \
     libxext6 \
     libxrender1 \
@@ -18,24 +13,25 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     xauth \
     && rm -rf /var/lib/apt/lists/*
 
-# Create and switch to non-root user
-RUN useradd -m -s /bin/bash appuser
+# Create non-root user
+RUN useradd -m appuser
 USER appuser
 
+# Set working directory
 WORKDIR /home/appuser/app
 
-# Ensure user-installed binaries (pytest) are on PATH
-ENV PATH="/home/appuser/.local/bin:${PATH}"
-
-# Copy requirements and install dependencies
+# Copy requirements first (better caching)
 COPY --chown=appuser:appuser requirements.txt .
 
-RUN pip install --no-cache-dir --user --upgrade pip && \
-    pip install --no-cache-dir --user -r requirements.txt && \
+# Install dependencies globally (no venv needed in Docker)
+RUN pip install --no-cache-dir --user -r requirements.txt && \
     pip install --no-cache-dir --user pytest matplotlib fpdf
 
-# Copy application source code
+# Add local user bin to PATH so python/pytest can be found directly
+ENV PATH="/home/appuser/.local/bin:$PATH"
+
+# Copy application code
 COPY --chown=appuser:appuser . .
 
-# Default command
+# Default command (uses system/user Python directly)
 CMD ["python", "aceestver_gymapp.py"]

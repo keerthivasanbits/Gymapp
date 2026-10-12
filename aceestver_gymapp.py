@@ -1,6 +1,5 @@
-# aceestver_gymapp.py
 import tkinter as tk
-from tkinter import ttk, messagebox, simpledialog
+from tkinter import ttk, messagebox
 import sqlite3
 from datetime import datetime, date
 import matplotlib.pyplot as plt
@@ -90,7 +89,7 @@ def init_db():
     # Add default admin if not exists
     cur.execute("SELECT * FROM users WHERE username='admin'")
     if not cur.fetchone():
-        cur.execute("INSERT INTO users VALUES ('admin', 'admin', 'Admin')")
+        cur.execute("INSERT INTO users VALUES ('admin','admin','Admin')")
     
     conn.commit()
     conn.close()
@@ -107,7 +106,6 @@ class ACEestApp:
         self.cur = self.conn.cursor()
         
         self.current_user = None
-        self.current_role = None
         self.current_client = None
         
         # Programs for AI-style generation
@@ -118,7 +116,7 @@ class ACEestApp:
         }
         
         self.login_screen()
-
+    
     # ---------- LOGIN SCREEN ----------
     def login_screen(self):
         self.clear_root()
@@ -136,11 +134,11 @@ class ACEestApp:
         tk.Entry(frame, textvariable=self.password_var, show="*", bg="#333", fg="white").pack()
         
         ttk.Button(frame, text="Login", command=self.login).pack(pady=20)
-
+    
     def login(self):
         username = self.username_var.get().strip()
         password = self.password_var.get().strip()
-        self.cur.execute("SELECT role FROM users WHERE username=? AND password=?", (username, password))
+        self.cur.execute("SELECT role FROM users WHERE username=? AND password=?", (username,password))
         row = self.cur.fetchone()
         if row:
             self.current_user = username
@@ -148,7 +146,7 @@ class ACEestApp:
             self.dashboard()
         else:
             messagebox.showerror("Login Failed", "Invalid credentials")
-
+    
     # ---------- DASHBOARD ----------
     def dashboard(self):
         self.clear_root()
@@ -162,7 +160,7 @@ class ACEestApp:
         left.pack(side="left", fill="y", padx=10, pady=10)
         
         # Client selection
-        tk.Label(left, text="Select Client", bg="#1a1a1a", fg="white").pack(pady=(5, 0))
+        tk.Label(left, text="Select Client", bg="#1a1a1a", fg="white").pack(pady=(5,0))
         self.client_list = ttk.Combobox(left, state="readonly")
         self.client_list.pack()
         self.client_list.bind("<<ComboboxSelected>>", self.load_client)
@@ -197,22 +195,22 @@ class ACEestApp:
         self.tab_workouts = tk.Frame(self.notebook, bg="#1a1a1a")
         self.notebook.add(self.tab_workouts, text="Workouts & Exercises")
         self.setup_workout_tab()
-
+    
     # ---------- CLIENT MANAGEMENT ----------
     def refresh_client_list(self):
         self.cur.execute("SELECT name FROM clients ORDER BY name")
         names = [row[0] for row in self.cur.fetchall()]
         self.client_list["values"] = names
-
+    
     def add_save_client(self):
-        name = simpledialog.askstring("Client Name", "Enter client name:")
+        name = tk.simpledialog.askstring("Client Name", "Enter client name:")
         if not name:
             return
-        self.cur.execute("INSERT OR IGNORE INTO clients (name, membership_status) VALUES (?, ?)", (name, "Active"))
+        self.cur.execute("INSERT OR IGNORE INTO clients (name,membership_status) VALUES (?,?)",(name,"Active"))
         self.conn.commit()
         self.refresh_client_list()
         messagebox.showinfo("Saved", f"Client {name} saved")
-
+    
     def load_client(self, event=None):
         name = self.client_list.get()
         if not name:
@@ -221,7 +219,7 @@ class ACEestApp:
         self.refresh_summary()
         self.refresh_workouts()
         self.plot_charts()
-
+    
     # ---------- AI-STYLE PROGRAM GENERATOR ----------
     def generate_program(self):
         if not self.current_client:
@@ -229,11 +227,11 @@ class ACEestApp:
             return
         program_type = random.choice(list(self.program_templates.keys()))
         program_detail = random.choice(self.program_templates[program_type])
-        self.cur.execute("UPDATE clients SET program=? WHERE name=?", (program_detail, self.current_client))
+        self.cur.execute("UPDATE clients SET program=? WHERE name=?",(program_detail,self.current_client))
         self.conn.commit()
         messagebox.showinfo("Program Generated", f"Program for {self.current_client}: {program_detail}")
         self.refresh_summary()
-
+    
     # ---------- PDF REPORT ----------
     def generate_pdf(self):
         if not self.current_client:
@@ -241,114 +239,105 @@ class ACEestApp:
             return
         pdf = FPDF()
         pdf.add_page()
-        pdf.set_font("Arial", "B", 16)
-        pdf.cell(0, 10, f"ACEest Client Report - {self.current_client}", ln=True)
-        self.cur.execute("SELECT * FROM clients WHERE name=?", (self.current_client,))
+        pdf.set_font("Arial","B",16)
+        pdf.cell(0,10,f"ACEest Client Report - {self.current_client}",ln=True)
+        self.cur.execute("SELECT * FROM clients WHERE name=?",(self.current_client,))
         client = self.cur.fetchone()
-        pdf.set_font("Arial", "", 12)
-        cols = ["ID", "Name", "Age", "Height", "Weight", "Program", "Calories", "Target Weight", "Target Adherence", "Membership", "End"]
-        for i, col in enumerate(cols):
-            pdf.cell(0, 10, f"{col}: {client[i]}", ln=True)
+        pdf.set_font("Arial","",12)
+        for i,col in enumerate(["ID","Name","Age","Height","Weight","Program","Calories","Target Weight","Target Adherence","Membership","End"]):
+            pdf.cell(0,10,f"{col}: {client[i]}",ln=True)
         pdf.output(f"{self.current_client}_report.pdf")
         messagebox.showinfo("PDF Generated", f"{self.current_client}_report.pdf created")
-
+    
     # ---------- MEMBERSHIP ----------
     def check_membership(self):
         if not self.current_client:
             return
-        self.cur.execute("SELECT membership_status, membership_end FROM clients WHERE name=?", (self.current_client,))
-        row = self.cur.fetchone()
-        if row:
-            status, end = row
-            msg = f"Membership: {status}\nRenewal Date: {end if end else 'N/A'}"
-            messagebox.showinfo("Membership", msg)
-
+        self.cur.execute("SELECT membership_status,membership_end FROM clients WHERE name=?",(self.current_client,))
+        status,end = self.cur.fetchone()
+        msg = f"Membership: {status}\nRenewal Date: {end if end else 'N/A'}"
+        messagebox.showinfo("Membership", msg)
+    
     # ---------- SUMMARY & CHARTS ----------
     def refresh_summary(self):
         if not self.current_client:
             return
-        self.cur.execute("SELECT * FROM clients WHERE name=?", (self.current_client,))
+        self.cur.execute("SELECT * FROM clients WHERE name=?",(self.current_client,))
         client = self.cur.fetchone()
-        if client:
-            text = f"Name: {client[1]}\nProgram: {client[5]}\nCalories: {client[6]}\nMembership: {client[9]}"
-            self.summary_text.configure(state="normal")
-            self.summary_text.delete("1.0", "end")
-            self.summary_text.insert("end", text)
-            self.summary_text.configure(state="disabled")
-
+        text = f"Name: {client[1]}\nProgram: {client[5]}\nCalories: {client[6]}\nMembership: {client[9]}"
+        self.summary_text.configure(state="normal")
+        self.summary_text.delete("1.0","end")
+        self.summary_text.insert("end",text)
+        self.summary_text.configure(state="disabled")
+    
     def plot_charts(self):
         for widget in self.chart_frame.winfo_children():
             widget.destroy()
         if not self.current_client:
             return
-        self.cur.execute("SELECT week, adherence FROM progress WHERE client_name=? ORDER BY id", (self.current_client,))
+        self.cur.execute("SELECT week, adherence FROM progress WHERE client_name=? ORDER BY id",(self.current_client,))
         data = self.cur.fetchall()
         if not data:
             return
         weeks = [d[0] for d in data]
         adherence = [d[1] for d in data]
-        fig, ax = plt.subplots(figsize=(6, 3))
-        ax.plot(weeks, adherence, marker="o")
+        fig, ax = plt.subplots(figsize=(6,3))
+        ax.plot(weeks,adherence,marker="o")
         ax.set_title("Weekly Adherence")
         ax.set_ylabel("%")
-        ax.set_ylim(0, 100)
+        ax.set_ylim(0,100)
         ax.grid(True)
-        canvas = FigureCanvasTkAgg(fig, self.chart_frame)
+        canvas = FigureCanvasTkAgg(fig,self.chart_frame)
         canvas.draw()
-        canvas.get_tk_widget().pack(fill="both", expand=True)
-
+        canvas.get_tk_widget().pack(fill="both",expand=True)
+    
     # ---------- WORKOUT + EXERCISE TAB ----------
     def setup_workout_tab(self):
-        columns = ("date", "type", "duration", "notes")
+        # Treeview
+        columns = ("date","type","duration","notes")
         self.tree_workouts = ttk.Treeview(self.tab_workouts, columns=columns, show="headings")
         for c in columns:
-            self.tree_workouts.heading(c, text=c.title())
-            self.tree_workouts.column(c, width=150)
-        self.tree_workouts.pack(fill="both", expand=True)
-        ttk.Button(self.tab_workouts, text="Add Workout", command=self.add_workout).pack(pady=5)
-
+            self.tree_workouts.heading(c,c.title())
+            self.tree_workouts.column(c,width=150)
+        self.tree_workouts.pack(fill="both",expand=True)
+        ttk.Button(self.tab_workouts,text="Add Workout",command=self.add_workout).pack(pady=5)
+    
     def refresh_workouts(self):
         for row in self.tree_workouts.get_children():
             self.tree_workouts.delete(row)
         if not self.current_client:
             return
-        self.cur.execute("SELECT date, workout_type, duration_min, notes FROM workouts WHERE client_name=? ORDER BY date DESC", (self.current_client,))
+        self.cur.execute("SELECT date,workout_type,duration_min,notes FROM workouts WHERE client_name=? ORDER BY date DESC",(self.current_client,))
         rows = self.cur.fetchall()
         for r in rows:
             self.tree_workouts.insert("", "end", values=r)
-
+    
     def add_workout(self):
         if not self.current_client:
             return
         win = tk.Toplevel(self.root)
         win.title(f"Add Workout - {self.current_client}")
         win.geometry("400x400")
-        
-        tk.Label(win, text="Date (YYYY-MM-DD)").pack()
+        tk.Label(win,text="Date (YYYY-MM-DD)").pack()
         date_var = tk.StringVar(value=date.today().isoformat())
-        tk.Entry(win, textvariable=date_var).pack()
-        
-        tk.Label(win, text="Type").pack()
+        tk.Entry(win,textvariable=date_var).pack()
+        tk.Label(win,text="Type").pack()
         type_var = tk.StringVar()
-        ttk.Combobox(win, textvariable=type_var, values=["Strength", "Hypertrophy", "Cardio", "Mobility"], state="readonly").pack()
-        
-        tk.Label(win, text="Duration (min)").pack()
+        ttk.Combobox(win,textvariable=type_var,values=["Strength","Hypertrophy","Cardio","Mobility"],state="readonly").pack()
+        tk.Label(win,text="Duration (min)").pack()
         dur_var = tk.IntVar(value=60)
-        tk.Entry(win, textvariable=dur_var).pack()
-        
-        tk.Label(win, text="Notes").pack()
+        tk.Entry(win,textvariable=dur_var).pack()
+        tk.Label(win,text="Notes").pack()
         notes_var = tk.StringVar()
-        tk.Entry(win, textvariable=notes_var).pack()
-        
+        tk.Entry(win,textvariable=notes_var).pack()
         def save():
-            self.cur.execute("INSERT INTO workouts (client_name, date, workout_type, duration_min, notes) VALUES (?, ?, ?, ?, ?)",
-                             (self.current_client, date_var.get(), type_var.get(), dur_var.get(), notes_var.get()))
+            self.cur.execute("INSERT INTO workouts (client_name,date,workout_type,duration_min,notes) VALUES (?,?,?,?,?)",
+                             (self.current_client,date_var.get(),type_var.get(),dur_var.get(),notes_var.get()))
             self.conn.commit()
             self.refresh_workouts()
             win.destroy()
-            
-        ttk.Button(win, text="Save", command=save).pack(pady=10)
-
+        ttk.Button(win,text="Save",command=save).pack(pady=10)
+    
     # ---------- UTILITY ----------
     def clear_root(self):
         for widget in self.root.winfo_children():

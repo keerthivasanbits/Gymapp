@@ -2,8 +2,9 @@ pipeline {
     agent any
 
     environment {
-        DISPLAY = ':99'
         PYTHONUNBUFFERED = '1'
+        MPLBACKEND = 'Agg'
+        PATH = "/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin:${env.PATH}"
     }
 
     stages {
@@ -15,7 +16,7 @@ pipeline {
                     . .venv/bin/activate
                     pip install --upgrade pip
 
-                    # Project dependencies
+                    # Core application dependencies
                     pip install matplotlib fpdf2 pytest pytest-cov
 
                     if [ -f requirements.txt ]; then
@@ -30,19 +31,21 @@ pipeline {
                 sh '''
                     . .venv/bin/activate
 
-                    # Start virtual display if not already running on :99
-                    Xvfb :99 -screen 0 1024x768x24 &
-                    XVFB_PID=$!
+                    # Locate Xvfb if available in system paths
+                    XVFB_BIN=$(command -v Xvfb || find /usr/bin /usr/local/bin /usr/X11R6/bin -name Xvfb 2>/dev/null | head -n 1)
 
-                    # Run tests
-                    pytest aceestver_test_1.py \
-                        --junitxml=test-results.xml \
-                        -v || TEST_EXIT=$?
+                    if [ -n "$XVFB_BIN" ]; then
+                        echo "Running tests with virtual framebuffer: $XVFB_BIN"
+                        $XVFB_BIN :99 -screen 0 1024x768x24 -ac &
+                        XVFB_PID=$!
+                        sleep 1
+                        DISPLAY=:99 pytest aceestver_test_1.py --junitxml=test-results.xml -v || TEST_EXIT=$?
+                        kill $XVFB_PID || true
+                    else
+                        echo "Xvfb not detected in PATH, running tests headlessly"
+                        pytest aceestver_test_1.py --junitxml=test-results.xml -v || TEST_EXIT=$?
+                    fi
 
-                    # Terminate virtual display process
-                    kill $XVFB_PID || true
-
-                    # Exit with pytest status code
                     exit ${TEST_EXIT:-0}
                 '''
             }
@@ -57,7 +60,7 @@ pipeline {
             sh 'rm -rf .venv test_fitness.db aceest_fitness.db'
         }
         failure {
-            echo 'Build or tests failed. Inspect console output and test-results.xml.'
+            echo 'Build failed. Check test-results.xml and Jenkins console log.'
         }
     }
 }

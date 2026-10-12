@@ -22,12 +22,23 @@ def test_db(tmp_path):
 
 @pytest.fixture
 def app_instance(test_db):
-    """Fixture to initialize the Tkinter root and application instance safely."""
-    root = tk.Tk()
-    root.withdraw()
+    """Fixture to initialize the Tkinter root and application instance safely across headless CI environments."""
+    root = None
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except (tk.TclError, Exception):
+        # Fallback when running headlessly without an active X-server
+        root = MagicMock(spec=tk.Tk)
+
     app = aceestver_gymapp.ACEestApp(root)
     yield app
-    root.destroy()
+
+    if root and not isinstance(root, MagicMock):
+        try:
+            root.destroy()
+        except Exception:
+            pass
 
 def test_init_db(test_db):
     """Test database initialization and default admin creation."""

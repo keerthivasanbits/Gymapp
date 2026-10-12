@@ -1,40 +1,38 @@
 pipeline {
     agent any
-    triggers {
-        githubPush()
+    triggers{
+      githubPush()
     }
 
-    stages {
-        stage('Checkout') {
-            steps {
+    stages{
+        stage('Checkout'){
+            steps{
                 echo 'Checking out main branch'
                 checkout scm
             }
         }
 
-        stage('Build') {
-            steps {
-                echo 'Installing Python dependencies'
+        stage('Build'){
+            steps{
+                echo 'installing python dependencies'
+
                 sh '''
-                    python3 -m venv .venv
-                    .venv/bin/pip install --upgrade pip
-                    .venv/bin/pip install --no-cache-dir -r requirements.txt
+                     python3 -m venv .venv
+                     .venv/bin/pip install -r requirements.txt
                 '''
             }
         }
 
-        stage('Test') {
-            steps {
-                echo 'Running Automated Tests with xvfb-run'
+        stage('Test'){
+            steps{
+                echo 'Running Automated Test'
+
                 sh '''
-                    # Activate venv
-                    source .venv/bin/activate
-
-                    # Install test dependencies
-                    pip install pytest pytest-xvfb matplotlib
-
-                    # Run tests inside virtual framebuffer
-                    xvfb-run -a pytest aceestver_test_1.py --maxfail=1 --disable-warnings -q
+                      .venv/bin/pip install --no-cache-dir -r requirements.txt
+                      .venv/bin/pip install pytest pytest-xvfb matplotlib
+                      
+                      # Run pytest inside a virtual frame buffer using xvfb-run
+                      xvfb-run --auto-servernum .venv/bin/pytest aceestver_test_1.py
                 '''
             }
         }

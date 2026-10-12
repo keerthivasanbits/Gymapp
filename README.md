@@ -25,17 +25,18 @@ Gym Fitness & Performance is a desktop application built with Python, Tkinter, a
 
    bash
    git clone https://github.com/keerthivasanbits/Gymapp.git
+
    cd Gymapp
    
 
-2. Create and activate a virtual environment (optional but recommended):
+3. Create and activate a virtual environment (optional but recommended):
 
    bash
    python3 -m venv .venv
    source .venv/bin/activate
    
 
-3. Install the required dependencies:
+4. Install the required dependencies:
 
    bash
    pip install -r requirements.txt

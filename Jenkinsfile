@@ -31,7 +31,7 @@ pipeline {
             steps {
                 sh '''
                     . .venv/bin/activate
-                    pytest aceestver_test_1.py --junitxml=test-results.xml -v
+                    xvfb-run -a pytest aceestver_test_1.py --junitxml=test-results.xml -v
                 '''
             }
         }

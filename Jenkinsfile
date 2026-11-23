@@ -4,6 +4,8 @@ pipeline {
     environment {
         PYTHONUNBUFFERED = '1'
         MPLBACKEND = 'Agg'
+        DOCKER_IMAGE = 'your-dockerhub-username/your-app-name'
+        DOCKER_CREDENTIALS_ID = 'dockerhub-credentials'
     }
 
     stages {
@@ -31,6 +33,24 @@ pipeline {
                     . .venv/bin/activate
                     pytest aceestver_test_1.py --junitxml=test-results.xml -v
                 '''
+            }
+        }
+
+        stage('Build & Push Docker Image') {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: env.DOCKER_CREDENTIALS_ID,
+                    usernameVariable: '2026ht66046keer',
+                    passwordVariable: 'Kavinayakeer@1996'
+                )]) {
+                    sh '''
+                        docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} -t ${DOCKER_IMAGE}:latest .
+                        echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                        docker push ${DOCKER_IMAGE}:${BUILD_NUMBER}
+                        docker push ${DOCKER_IMAGE}:latest
+                        docker logout
+                    '''
+                }
             }
         }
     }

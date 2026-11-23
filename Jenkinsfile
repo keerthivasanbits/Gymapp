@@ -39,7 +39,7 @@ pipeline {
         stage('Build & Push Docker Image') {
             steps {
                 withCredentials([usernamePassword(
-                    credentialsId: env.DOCKER_CREDENTIALS_ID,
+                    credentialsId: DOCKER_CREDENTIALS_ID,
                     usernameVariable: '2026ht66046keer',
                     passwordVariable: 'Kavinayakeer@1996'
                 )]) {

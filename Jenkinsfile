@@ -4,7 +4,7 @@ pipeline {
     environment {
         PYTHONUNBUFFERED = '1'
         MPLBACKEND = 'Agg'
-        DOCKER_IMAGE = 'your-dockerhub-username/your-app-name'
+        DOCKER_IMAGE = '2026ht66046keer/gymapp'
         DOCKER_CREDENTIALS_ID = 'dockerhub-credentials'
     }
 
@@ -39,9 +39,9 @@ pipeline {
         stage('Build & Push Docker Image') {
             steps {
                 withCredentials([usernamePassword(
-                    credentialsId: DOCKER_CREDENTIALS_ID,
-                    usernameVariable: '2026ht66046keer',
-                    passwordVariable: 'Kavinayakeer@1996'
+                    credentialsId: env.DOCKER_CREDENTIALS_ID,
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
                 )]) {
                     sh '''
                         docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} -t ${DOCKER_IMAGE}:latest .

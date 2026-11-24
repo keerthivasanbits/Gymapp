@@ -10,7 +10,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxft2 \
     libxss1 \
     xvfb \
-    xauth \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
@@ -19,6 +18,7 @@ USER appuser
 
 # Set working directory
 WORKDIR /home/appuser/app
+RUN chown -R appuser:appuser /home/appuser/app
 
 # Copy requirements first (better caching)
 COPY --chown=appuser:appuser requirements.txt .

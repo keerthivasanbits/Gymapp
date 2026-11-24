@@ -5,7 +5,7 @@ pipeline {
         PYTHONUNBUFFERED = '1'
         MPLBACKEND = 'Agg'
         DOCKER_IMAGE = '2026ht66046keer/gymapp'
-        DOCKER_CREDENTIALS_ID = 'dockerhub-credentials'
+        DOCKER_CREDENTIALS_ID = 'dockerhub-creds'
     }
 
     stages {

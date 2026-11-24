@@ -1,180 +1,161 @@
-import sys, os
-sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-
+import os
 import sqlite3
-import pytest
 import tkinter as tk
-from tkinter import ttk
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+import pytest
 
-import aceestver_gymapp
+import aceestver_gymapp as app_module
 
-@pytest.fixture
-def test_db(tmp_path):
-    """Fixture to set up an isolated temporary SQLite database for testing."""
-    db_file = tmp_path / "test_fitness.db"
-    original_db = aceestver_gymapp.DB_NAME
-    aceestver_gymapp.DB_NAME = str(db_file)
-    
-    aceestver_gymapp.init_db()
-    yield str(db_file)
-    aceestver_gymapp.DB_NAME = original_db
-
-class DummyVar:
-    """Headless stand-in for Tkinter StringVar/IntVar."""
-    def __init__(self, value=""):
-        self._val = value
-    def get(self):
-        return self._val
-    def set(self, val):
-        self._val = val
 
 @pytest.fixture
-def app_instance(test_db):
-    """Fixture to safely instantiate ACEestApp in completely headless environments without X11."""
-    # Check if a physical/virtual X-server is active
-    has_display = False
-    try:
-        test_root = tk.Tk()
-        test_root.withdraw()
-        test_root.destroy()
-        has_display = True
-    except (tk.TclError, Exception):
-        has_display = False
+def app(tmp_path, monkeypatch):
+    """Set up an isolated test database and Tkinter app instance."""
+    test_db = str(tmp_path / "test_fitness.db")
+    monkeypatch.setattr(app_module, "DB_NAME", test_db)
+    app_module.init_db()
 
-    if has_display:
-        root = tk.Tk()
-        root.withdraw()
-        app = aceestver_gymapp.ACEestApp(root)
-        yield app
-        try:
-            root.destroy()
-        except Exception:
-            pass
-    else:
-        # Intercept Tkinter widget initializations to bypass Tcl interpreter calls
-        with patch("tkinter.Tk") as mock_tk_cls, \
-             patch("tkinter.Frame") as mock_frame, \
-             patch("tkinter.Label") as mock_label, \
-             patch("tkinter.Entry") as mock_entry, \
-             patch("tkinter.ttk.Button") as mock_btn, \
-             patch("tkinter.ttk.Combobox") as mock_combo, \
-             patch("tkinter.ttk.Notebook") as mock_notebook, \
-             patch("tkinter.Text") as mock_text:
+    root = tk.Tk()
+    root.withdraw()
+    application = app_module.ACEestApp(root)
 
-            mock_root = mock_tk_cls.return_value
-            mock_root.winfo_children.return_value = []
+    yield application
 
-            # Prevent Tkinter StringVar/IntVar initialization crashes
-            with patch("tkinter.StringVar", side_effect=lambda value="": DummyVar(value)), \
-                 patch("tkinter.IntVar", side_effect=lambda value=0: DummyVar(value)):
+    application.conn.close()
+    root.destroy()
 
-                app = aceestver_gymapp.ACEestApp(mock_root)
-                yield app
 
-                if hasattr(app, "conn") and app.conn:
-                    app.conn.close()
+def login_as_admin(application):
+    """Helper to log into the dashboard as default admin."""
+    application.username_var.set("admin")
+    application.password_var.set("admin")
+    application.login()
 
-def test_init_db(test_db):
-    """Test database initialization and default admin creation."""
+
+def test_init_db(tmp_path, monkeypatch):
+    """Verify all tables and default admin user are created."""
+    test_db = str(tmp_path / "init_test.db")
+    monkeypatch.setattr(app_module, "DB_NAME", test_db)
+    app_module.init_db()
+
     conn = sqlite3.connect(test_db)
     cur = conn.cursor()
-    
-    cur.execute("SELECT name FROM sqlite_master WHERE type='table';")
+
+    cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
     tables = {row[0] for row in cur.fetchall()}
-    expected_tables = {"users", "clients", "progress", "workouts", "exercises", "metrics"}
-    assert expected_tables.issubset(tables)
-    
-    cur.execute("SELECT role FROM users WHERE username='admin'")
-    row = cur.fetchone()
-    assert row is not None
-    assert row[0] == "Admin"
+    expected = {"users", "clients", "progress", "workouts", "exercises", "metrics"}
+    assert expected.issubset(tables)
+
+    cur.execute("SELECT username, role FROM users WHERE username='admin'")
+    assert cur.fetchone() == ("admin", "Admin")
     conn.close()
 
-def test_login_success(app_instance):
-    """Test successful user login with valid admin credentials."""
-    app_instance.username_var.set("admin")
-    app_instance.password_var.set("admin")
-    
-    with patch.object(app_instance, "dashboard", return_value=None) as mock_dash:
-        app_instance.login()
-        assert app_instance.current_user == "admin"
-        assert app_instance.current_role == "Admin"
-        mock_dash.assert_called_once()
 
-def test_login_failure(app_instance):
-    """Test login failure with invalid credentials."""
-    app_instance.username_var.set("admin")
-    app_instance.password_var.set("wrongpassword")
-    
-    with patch("tkinter.messagebox.showerror") as mock_error:
-        app_instance.login()
-        assert app_instance.current_user is None
-        mock_error.assert_called_once()
+def test_login_success(app):
+    """Valid admin credentials should open the dashboard."""
+    login_as_admin(app)
+    assert app.current_user == "admin"
+    assert app.current_role == "Admin"
 
-def test_add_save_client(app_instance):
-    """Test adding a client via simpledialog input mock, avoiding UI refresh errors."""
-    with patch("tkinter.simpledialog.askstring", return_value="John Doe"), \
-         patch.object(app_instance, "refresh_client_list") as mock_refresh, \
-         patch("tkinter.messagebox.showinfo") as mock_info:
-        
-        app_instance.add_save_client()
-        
-        # Verify client is stored in DB
-        app_instance.cur.execute("SELECT name, membership_status FROM clients WHERE name=?", ("John Doe",))
-        row = app_instance.cur.fetchone()
-        assert row is not None
-        assert row[0] == "John Doe"
-        assert row[1] == "Active"
-        mock_refresh.assert_called_once()
-        mock_info.assert_called_once()
 
-def test_generate_program(app_instance):
-    """Test AI program generator assigns a workout program, bypassing UI summary updates."""
-    app_instance.current_client = "Jane Doe"
-    app_instance.cur.execute("INSERT INTO clients (name, membership_status) VALUES (?, ?)", ("Jane Doe", "Active"))
-    app_instance.conn.commit()
-    
-    with patch.object(app_instance, "refresh_summary") as mock_refresh, \
-         patch("tkinter.messagebox.showinfo") as mock_info:
-        
-        app_instance.generate_program()
-        
-        app_instance.cur.execute("SELECT program FROM clients WHERE name=?", ("Jane Doe",))
-        program = app_instance.cur.fetchone()[0]
-        assert program is not None
-        assert len(program) > 0
-        mock_refresh.assert_called_once()
-        mock_info.assert_called_once()
+def test_login_failure(app):
+    """Invalid credentials should show an error and keep current_user None."""
+    app.username_var.set("wrong_user")
+    app.password_var.set("wrong_pass")
 
-def test_add_workout(app_instance):
-    """Test adding workout entries for a client."""
-    app_instance.current_client = "Mike Smith"
-    app_instance.cur.execute("INSERT INTO clients (name, membership_status) VALUES (?, ?)", ("Mike Smith", "Active"))
-    app_instance.conn.commit()
-    
-    app_instance.cur.execute(
-        "INSERT INTO workouts (client_name, date, workout_type, duration_min, notes) VALUES (?, ?, ?, ?, ?)",
-        ("Mike Smith", "2026-10-10", "Strength", 45, "Great session")
+    with patch.object(app_module.messagebox, "showerror") as mock_error:
+        app.login()
+        mock_error.assert_called_once_with("Login Failed", "Invalid credentials")
+    assert app.current_user is None
+
+
+def test_add_save_client(app, monkeypatch):
+    """Adding a client should insert them into the database with Active status."""
+    login_as_admin(app)
+
+    mock_simpledialog = MagicMock()
+    mock_simpledialog.askstring.return_value = "John Doe"
+    monkeypatch.setattr(tk, "simpledialog", mock_simpledialog, raising=False)
+
+    with patch.object(app_module.messagebox, "showinfo") as mock_info:
+        app.add_save_client()
+        mock_info.assert_called_once_with("Saved", "Client John Doe saved")
+
+    app.cur.execute("SELECT name, membership_status FROM clients WHERE name='John Doe'")
+    assert app.cur.fetchone() == ("John Doe", "Active")
+
+
+def test_generate_program(app):
+    """Generating an AI program should save a valid program template to the DB."""
+    login_as_admin(app)
+    app.cur.execute(
+        "INSERT INTO clients (name, membership_status) VALUES (?, ?)",
+        ("Alice", "Active"),
     )
-    app_instance.conn.commit()
-    
-    app_instance.cur.execute("SELECT workout_type, duration_min, notes FROM workouts WHERE client_name=?", ("Mike Smith",))
-    row = app_instance.cur.fetchone()
-    assert row == ("Strength", 45, "Great session")
+    app.conn.commit()
+    app.current_client = "Alice"
 
-def test_check_membership(app_instance):
-    """Test viewing membership status popup info."""
-    app_instance.current_client = "Sarah Connor"
-    app_instance.cur.execute(
+    with patch.object(app_module.messagebox, "showinfo") as mock_info:
+        app.generate_program()
+        mock_info.assert_called_once()
+
+    app.cur.execute("SELECT program FROM clients WHERE name='Alice'")
+    program = app.cur.fetchone()[0]
+    all_templates = [p for group in app.program_templates.values() for p in group]
+    assert program in all_templates
+
+
+def test_check_membership(app):
+    """Checking membership should display the client's status and renewal date."""
+    login_as_admin(app)
+    app.cur.execute(
         "INSERT INTO clients (name, membership_status, membership_end) VALUES (?, ?, ?)",
-        ("Sarah Connor", "Active", "2026-12-31")
+        ("Bob", "Active", "2026-12-31"),
     )
-    app_instance.conn.commit()
-    
-    with patch("tkinter.messagebox.showinfo") as mock_info:
-        app_instance.check_membership()
-        mock_info.assert_called_once()
-        args = mock_info.call_args[0]
-        assert "Active" in args[1]
-        assert "2026-12-31" in args[1]
+    app.conn.commit()
+    app.current_client = "Bob"
+
+    with patch.object(app_module.messagebox, "showinfo") as mock_info:
+        app.check_membership()
+        mock_info.assert_called_once_with(
+            "Membership", "Membership: Active\nRenewal Date: 2026-12-31"
+        )
+
+
+def test_add_workout_and_refresh(app):
+    """Workouts inserted for a client should appear in the Treeview."""
+    login_as_admin(app)
+    app.cur.execute(
+        "INSERT INTO clients (name, membership_status) VALUES (?, ?)",
+        ("Charlie", "Active"),
+    )
+    app.cur.execute(
+        "INSERT INTO workouts (client_name, date, workout_type, duration_min, notes) VALUES (?, ?, ?, ?, ?)",
+        ("Charlie", "2026-11-24", "Strength", 45, "Bench press"),
+    )
+    app.conn.commit()
+    app.current_client = "Charlie"
+
+    app.refresh_workouts()
+    items = app.tree_workouts.get_children()
+    assert len(items) == 1
+    values = app.tree_workouts.item(items[0], "values")
+    assert values == ("2026-11-24", "Strength", "45", "Bench press")
+
+
+def test_generate_pdf(app, tmp_path, monkeypatch):
+    """Generating a PDF report should create the client's PDF file."""
+    login_as_admin(app)
+    monkeypatch.chdir(tmp_path)
+
+    app.cur.execute(
+        "INSERT INTO clients (name, age, height, weight, program, calories, membership_status) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        ("Diana", 28, 165.0, 60.0, "Full Body HIIT", 2000, "Active"),
+    )
+    app.conn.commit()
+    app.current_client = "Diana"
+
+    with patch.object(app_module.messagebox, "showinfo") as mock_info:
+        app.generate_pdf()
+        mock_info.assert_called_once_with("PDF Generated", "Diana_report.pdf created")
+
+    assert os.path.exists(tmp_path / "Diana_report.pdf")

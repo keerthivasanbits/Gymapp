@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gymapp-deployment
+  labels:
+    app: gymapp
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: gymapp
+  template:
+    metadata:
+      labels:
+        app: gymapp
+    spec:
+      containers:
+        - name: gymapp
+          image: 2026ht66046keer/gymapp:latest
+          imagePullPolicy: Always
+          env:
+            - name: PYTHONUNBUFFERED
+              value: "1"
+            - name: MPLBACKEND
+              value: "Agg"

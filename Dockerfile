@@ -1,40 +1,29 @@
 FROM python:3.10-slim
 
-# Prevent Python from buffering stdout/stderr
-ENV PYTHONUNBUFFERED=1 \
-    DEBIAN_FRONTEND=noninteractive
-
-# Install Tkinter GUI, build essentials, and Xvfb dependencies
+# Install system dependencies for Tkinter and headless display (Xvfb)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-tk \
-    tk \
-    tk-dev \
-    libx11-6 \
-    libxext6 \
-    libxrender1 \
-    libxft2 \
-    libxss1 \
     xvfb \
-    xauth \
     && rm -rf /var/lib/apt/lists/*
 
-# Create and switch to non-root user
-RUN useradd -m -s /bin/bash appuser
-USER appuser
-
+# Create non-root user and app directory
+RUN useradd -m appuser
 WORKDIR /home/appuser/app
+RUN chown -R appuser:appuser /home/appuser/app
 
-# Set up virtual environment and update PATH
-ENV PATH="/home/appuser/app/.venv/bin:$PATH"
+# Switch to non-root user
+USER appuser
+ENV PATH="/home/appuser/.local/bin:${PATH}"
+ENV PYTHONUNBUFFERED=1
+ENV MPLBACKEND=Agg
 
-# Copy requirements and install dependencies
+# Install Python dependencies
 COPY --chown=appuser:appuser requirements.txt .
-RUN python -m venv .venv && \
-    pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --user --upgrade pip && \
+    pip install --no-cache-dir --user -r requirements.txt
 
-# Copy application source code
+# Copy application code
 COPY --chown=appuser:appuser . .
 
-# Default command to run the application
-CMD ["python", "aceestver_gymapp.py"]
+# Run Tkinter app under a virtual display
+CMD ["xvfb-run", "-a", "python", "aceestver_gymapp.py"]
